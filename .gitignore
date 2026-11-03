@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Native Android build artifacts (android/.gitignore covers the rest)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local tool config
+.claude/
+
+# Environment
+.env
+.env.*
+
+# Release signing (never commit)
+android/keystore.properties
+android/*.jks
+android/*.keystore

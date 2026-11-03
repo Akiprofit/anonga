@@ -1,0 +1,13 @@
+{
+  "appId": "com.marc.anonga",
+  "appName": "AnoNga",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0
+    }
+  }
+}

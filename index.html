@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>AnoNga</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <div id="app" class="app">
+    <!-- Home Screen: Deck Collection -->
+    <div id="homeScreen" class="screen active">
+      <header class="header">
+        <div class="header-content">
+          <div class="header-left">
+            <h1 class="app-title">AnoNga</h1>
+            <p class="app-subtitle">The Collection</p>
+          </div>
+          <button id="langToggleHome" class="lang-toggle" data-lang="en" aria-label="Toggle language">
+            EN / TL
+          </button>
+        </div>
+      </header>
+
+      <!-- Tab Navigation -->
+      <div class="tab-navigation">
+        <button id="tabDecks" class="tab-btn active" data-tab="decks"><span class="icon-wrapper" data-icon="home"></span> Decks</button>
+        <button id="tabCollections" class="tab-btn" data-tab="collections"><span class="icon-wrapper" data-icon="book"></span> Collections</button>
+      </div>
+
+      <main class="home-main">
+        <!-- DECKS TAB -->
+        <div id="decksTab" class="tab-content active">
+          <div class="collection-header">
+            <h2>A deck for every conversation.</h2>
+            <p>Find a little laughter, a familiar story, or somewhere deeper to go.</p>
+          </div>
+
+          <!-- Collection Tabs -->
+          <div class="collection-tabs">
+            <button class="tab-btn active" data-collection="all">All decks</button>
+            <button class="tab-btn" data-collection="solo">Solo</button>
+            <button class="tab-btn" data-collection="together">Together</button>
+            <button class="tab-btn" data-collection="friends">Friends</button>
+          </div>
+
+          <!-- Decks Grid -->
+          <div class="decks-container">
+            <div id="decksList" class="decks-grid">
+              <!-- Decks will be rendered here -->
+            </div>
+          </div>
+        </div>
+
+        <!-- COLLECTIONS TAB -->
+        <div id="collectionsTab" class="tab-content">
+          <div class="collection-header">
+            <h2>Collections</h2>
+            <p>Good questions. Kept together.</p>
+          </div>
+
+          <!-- Always Here Section -->
+          <div class="collections-section">
+            <h3 class="section-title">ALWAYS HERE</h3>
+            <div class="collections-grid">
+              <!-- Favorites Card -->
+              <div class="collection-card" id="favoritesCard">
+                <div class="card-icon icon-wrapper" data-icon="heart" data-filled="true"></div>
+                <div class="card-text">
+                  <div class="card-title">Favorites</div>
+                  <div class="card-subtitle">Hearted by you</div>
+                </div>
+              </div>
+
+              <!-- Handmade Card -->
+              <div class="collection-card" id="handmadeCard">
+                <div class="card-icon icon-wrapper" data-icon="pencil"></div>
+                <div class="card-text">
+                  <div class="card-title">Handmade</div>
+                  <div class="card-subtitle">Written by you</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Your Collections Section -->
+          <div class="collections-section">
+            <h3 class="section-title">YOUR COLLECTIONS</h3>
+            <p class="section-description">Make your own collections and play them together. Favorites are always free.</p>
+            <div id="customDecksList" class="collections-grid">
+              <!-- Custom decks will be rendered here -->
+            </div>
+          </div>
+
+          <!-- Create Deck Button -->
+          <div class="collections-footer">
+            <button id="createDeckBtn" class="btn btn-primary btn-large">
+              <span class="icon-wrapper" data-icon="plus"></span> Create New Collection
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Play Screen: Card Game -->
+    <div id="playScreen" class="screen">
+      <header class="header compact">
+        <div class="header-content">
+          <button id="backBtn" class="back-btn" aria-label="Back to decks"><span class="icon-wrapper" data-icon="arrow-left"></span> Back</button>
+          <h2 id="currentDeckTitle" class="deck-title">Deck Name</h2>
+          <button id="langTogglePlay" class="lang-toggle" data-lang="en" aria-label="Toggle language">
+            EN / TL
+          </button>
+        </div>
+      </header>
+
+      <main class="play-main">
+        <!-- Card stage: physical deck + top card -->
+        <div class="play-stage" id="playStage" data-theme="friendly">
+          <div class="deck-stack" id="deckStack" aria-hidden="true">
+            <div class="stack-card"></div>
+            <div class="stack-card"></div>
+            <div class="stack-card"></div>
+            <div class="stack-card"></div>
+          </div>
+
+          <div id="card" class="card" role="button" tabindex="0" aria-pressed="false"
+               aria-label="Conversation card. Tap to flip it, swipe left for the next question, swipe right to go back.">
+            <div class="card-float">
+              <div class="card-inner" id="cardInner">
+                <div class="card-face card-front">
+                  <div class="card-topline">
+                    <span id="cardDeckLabel" class="card-kicker">Deck</span>
+                    <span id="cardCounter" class="card-counter">1 / 1</span>
+                  </div>
+                  <div class="card-body">
+                    <p id="questionText" class="question-text">
+                      Tap to reveal a question
+                    </p>
+                  </div>
+                  <div class="card-bottomline">
+                    <span id="cardLanguage" class="card-chip">EN</span>
+                    <span class="card-flip-hint">Tap to flip</span>
+                  </div>
+                </div>
+
+                <div class="card-face card-back">
+                  <div class="card-topline">
+                    <span id="cardBackLabel" class="card-kicker">Reflection</span>
+                    <span id="cardBackCounter" class="card-counter">1 / 1</span>
+                  </div>
+                  <div class="card-body">
+                    <p id="cardBackText" class="question-text back-text">Turn the card over.</p>
+                  </div>
+                  <div class="card-bottomline">
+                    <span id="cardBackDeck" class="card-chip">Deck</span>
+                    <span class="card-flip-hint">Tap to flip back</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Swipe hints -->
+          <div class="swipe-hints" aria-hidden="true">
+            <div class="hint hint-left">Next</div>
+            <div class="hint hint-right">Back</div>
+          </div>
+        </div>
+
+        <!-- Progress -->
+        <div class="deck-progress" aria-hidden="true">
+          <div id="deckProgressFill" class="deck-progress-fill"></div>
+        </div>
+
+        <!-- Controls -->
+        <div class="play-controls">
+          <button id="shuffleBtn" class="control-btn" aria-label="Shuffle the deck">
+            <span class="icon-wrapper" data-icon="shuffle"></span>
+            <span class="control-label">Shuffle</span>
+          </button>
+          <button id="drawBtn" class="control-btn control-primary" aria-label="Draw the next card">
+            <span class="icon-wrapper" data-icon="arrow-right"></span>
+            <span class="control-label">Draw</span>
+          </button>
+          <button id="favoriteBtn" class="control-btn" data-is-favorite="false" aria-pressed="false" aria-label="Add to favorites">
+            <span class="icon-wrapper" data-icon="heart"></span>
+            <span class="control-label">Favorite</span>
+          </button>
+        </div>
+
+        <!-- Actions Footer -->
+        <footer class="play-footer">
+          <button id="favoritesPlayBtn" class="action-btn" aria-label="View favorites">
+            <span class="icon-wrapper" data-icon="heart" data-filled="true"></span> Favorites
+          </button>
+          <button id="themeBtn" class="action-btn" aria-label="Change card theme">
+            <span class="icon-wrapper" data-icon="palette"></span> Theme
+          </button>
+          <button id="infoBtn" class="action-btn" aria-label="Deck info">
+            <span class="icon-wrapper" data-icon="info"></span> Info
+          </button>
+        </footer>
+      </main>
+
+      <!-- Deck completion -->
+      <div id="completionOverlay" class="completion-overlay" aria-hidden="true">
+        <div class="completion-confetti" id="completionConfetti" aria-hidden="true"></div>
+        <div class="completion-panel" role="dialog" aria-modal="true" aria-labelledby="completionTitle">
+          <div class="completion-mark"><span class="icon-wrapper" data-icon="sparkles"></span></div>
+          <h2 id="completionTitle">Deck complete</h2>
+          <p id="completionText">You made it through every question.</p>
+          <div class="completion-actions">
+            <button id="completionShuffleBtn" class="btn btn-primary">Shuffle &amp; go again</button>
+            <button id="completionRestartBtn" class="btn btn-secondary">Start over</button>
+            <button id="completionBackBtn" class="btn btn-ghost">Back to decks</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="favoritesModal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Favorite Questions</h2>
+          <button class="modal-close" aria-label="Close"><span class="icon-wrapper" data-icon="x"></span></button>
+        </div>
+        <div id="favoritesList" class="favorites-list">
+          <!-- Favorites will be listed here -->
+        </div>
+      </div>
+    </div>
+
+    <div id="deckInfoModal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="infoDeckName">Deck Name</h2>
+          <button class="modal-close" aria-label="Close"><span class="icon-wrapper" data-icon="x"></span></button>
+        </div>
+        <div class="deck-info-content">
+          <p id="infoDeckDescription"></p>
+          <p id="infoDeckCount" class="deck-count"></p>
+          <button id="addQuestionsToDeckBtn" class="btn btn-primary"><span class="icon-wrapper" data-icon="plus"></span> Add Questions</button>
+          <button id="deleteDeckBtn" class="btn btn-danger"><span class="icon-wrapper" data-icon="trash"></span> Delete Deck</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="themeModal" class="modal hidden">
+      <div class="modal-content theme-modal-content">
+        <div class="modal-header">
+          <h2>Card theme</h2>
+          <button class="modal-close" aria-label="Close"><span class="icon-wrapper" data-icon="x"></span></button>
+        </div>
+        <p class="theme-intro">Change the look of this deck. Your questions and their order stay exactly the same.</p>
+        <!-- Fixed preview card (sticky) -->
+        <div class="theme-preview-sticky">
+          <div class="theme-preview-wrap">
+            <div class="theme-preview-card" id="themePreviewCard">
+              <div class="theme-preview-front" id="themePreviewFront">
+                <div class="theme-preview-kicker">Getting to know</div>
+                <div class="theme-preview-question">What is something you've learned about yourself recently?</div>
+                <div class="theme-preview-hint">Tap to flip</div>
+              </div>
+              <div class="theme-preview-back" id="themePreviewBack">
+                <div class="theme-preview-kicker">Reflection</div>
+                <div class="theme-preview-answer">The memories that stay are not always the biggest ones.</div>
+                <div class="theme-preview-hint">Tap to return</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Scrollable theme options -->
+        <div class="theme-options-scroll">
+          <div id="themeGrid" class="theme-grid"></div>
+        </div>
+        <div class="theme-actions">
+          <button id="themeCancelBtn" class="btn btn-ghost">Cancel</button>
+          <button id="themeApplyBtn" class="btn btn-primary">Apply Theme</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="createDeckModal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Add New Collection</h2>
+          <button class="modal-close" aria-label="Close"><span class="icon-wrapper" data-icon="x"></span></button>
+        </div>
+
+        <!-- Step 1: CSV Import or Manual (Primary) -->
+        <div id="colorSelectStep" class="creation-step active">
+          <div class="step-title">Final Step: Choose Card Color</div>
+          <p class="step-description">Pick a color for your collection deck.</p>
+
+          <!-- Fixed preview card (sticky) -->
+          <div class="color-preview-sticky">
+            <div class="color-preview-wrap">
+              <div class="color-preview-card" id="colorPreviewCard">
+                <div class="color-preview-header">
+                  <span class="color-preview-number">KUMUSTAHAN 01</span>
+                  <span class="color-preview-count">0 questions</span>
+                </div>
+                <div class="color-preview-title">Getting to Know</div>
+                <div class="color-preview-desc">A little question to bring us closer.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Scrollable color options -->
+          <div class="color-options-scroll">
+            <div class="form-group">
+              <label>Card Color</label>
+              <div class="color-picker">
+              <input type="radio" name="selectedColor" value="#c9846f" id="color1" class="color-input">
+              <label for="color1" class="color-label" style="background-color: #c9846f;" title="Terracotta"></label>
+
+              <input type="radio" name="selectedColor" value="#3d2f5c" id="color2" class="color-input">
+              <label for="color2" class="color-label" style="background-color: #3d2f5c;" title="Deep Purple"></label>
+
+              <input type="radio" name="selectedColor" value="#5a7a5c" id="color3" class="color-input">
+              <label for="color3" class="color-label" style="background-color: #5a7a5c;" title="Sage Green"></label>
+
+              <input type="radio" name="selectedColor" value="#8b6f47" id="color4" class="color-input">
+              <label for="color4" class="color-label" style="background-color: #8b6f47;" title="Warm Brown"></label>
+
+              <input type="radio" name="selectedColor" value="#c8957d" id="color5" class="color-input">
+              <label for="color5" class="color-label" style="background-color: #c8957d;" title="Dusty Rose"></label>
+
+              <input type="radio" name="selectedColor" value="#6b4c5a" id="color6" class="color-input">
+              <label for="color6" class="color-label" style="background-color: #6b4c5a;" title="Mauve"></label>
+
+              <!-- New colors -->
+              <input type="radio" name="selectedColor" value="#7b2d3f" id="color7" class="color-input">
+              <label for="color7" class="color-label" style="background-color: #7b2d3f;" title="Classic Maroon"></label>
+
+              <input type="radio" name="selectedColor" value="#6b1f3a" id="color8" class="color-input">
+              <label for="color8" class="color-label" style="background-color: #6b1f3a;" title="Wine Burgundy"></label>
+
+              <input type="radio" name="selectedColor" value="#8b4a52" id="color9" class="color-input">
+              <label for="color9" class="color-label" style="background-color: #8b4a52;" title="Dusty Rosewood"></label>
+
+              <input type="radio" name="selectedColor" value="#c75b6e" id="color10" class="color-input">
+              <label for="color10" class="color-label" style="background-color: #c75b6e;" title="Dark Cherry"></label>
+
+              <input type="radio" name="selectedColor" value="#3a7ca5" id="color11" class="color-input">
+              <label for="color11" class="color-label" style="background-color: #3a7ca5;" title="Ocean"></label>
+
+              <input type="radio" name="selectedColor" value="#5a7a5c" id="color12" class="color-input">
+              <label for="color12" class="color-label" style="background-color: #5a7a5c;" title="Sage"></label>
+
+              <input type="radio" name="selectedColor" value="#c75b3e" id="color13" class="color-input">
+              <label for="color13" class="color-label" style="background-color: #c75b3e;" title="Sunset"></label>
+
+              <input type="radio" name="selectedColor" value="#8b6fa8" id="color14" class="color-input">
+              <label for="color14" class="color-label" style="background-color: #8b6fa8;" title="Lavender"></label>
+
+              <input type="radio" name="selectedColor" value="#9b4d6e" id="color15" class="color-input">
+              <label for="color15" class="color-label" style="background-color: #9b4d6e;" title="Berry"></label>
+
+              <input type="radio" name="selectedColor" value="#b8860b" id="color16" class="color-input">
+              <label for="color16" class="color-label" style="background-color: #b8860b;" title="Citrus"></label>
+            </div>
+          </div>
+          </div>
+
+          <div class="color-step-actions">
+            <button id="colorBackBtn" class="btn btn-ghost" style="flex: 1;">Back</button>
+            <button id="colorCreateBtn" class="btn btn-primary" style="flex: 1;">Create Collection</button>
+          </div>
+        </div>
+
+        <!-- Step 2: CSV Import or Manual (Primary) -->
+        <div id="csvImportStep" class="creation-step">
+          <div class="step-title">Step 2: Import Questions</div>
+          <p class="step-description">Upload a CSV file with your questions. This is the quickest way to create a collection.</p>
+
+          <form id="csvImportForm" class="modal-form">
+            <div class="form-group">
+              <label for="csvFile">Select CSV File</label>
+              <input id="csvFile" class="form-input" type="file" required>
+              <div class="form-help">CSV should have columns: question_en, question_tl</div>
+            </div>
+            <button type="submit" class="btn btn-primary">Import Questions</button>
+          </form>
+
+          <div class="divider">or</div>
+
+          <button id="manualImportBtn" class="btn btn-secondary" style="width: 100%;">
+            <span class="icon-wrapper" data-icon="pencil"></span> Add Questions Manually
+          </button>
+        </div>
+
+        <!-- Step 3: Manual Add (Alternative) -->
+        <div id="manualAddStep" class="creation-step">
+          <div class="step-title">Step 3: Collection Details</div>
+          <form id="createDeckForm" class="modal-form">
+            <div class="form-group">
+              <label for="newDeckName">Collection Name</label>
+              <input id="newDeckName" class="form-input" type="text" placeholder="e.g., My Custom Deck" required>
+            </div>
+            <div class="form-group">
+              <label for="newDeckDescription">Description</label>
+              <textarea id="newDeckDescription" class="form-input" placeholder="What's this collection about?" required></textarea>
+            </div>
+            <div class="form-group">
+              <label for="newDeckCollection">Category</label>
+              <div class="category-pill-group" id="newDeckCollectionGroup">
+                <button type="button" class="category-pill" data-value="solo">Solo</button>
+                <button type="button" class="category-pill" data-value="together">Together</button>
+                <button type="button" class="category-pill" data-value="friends">Friends</button>
+              </div>
+              <input type="hidden" id="newDeckCollection" value="" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Create Collection</button>
+          </form>
+        </div>
+
+        <!-- Step 4: Deck Details (After CSV Import) -->
+        <div id="deckDetailsStep" class="creation-step">
+          <div class="step-title">Step 4: Collection Details</div>
+          <form id="deckDetailsForm" class="modal-form">
+            <div class="form-group">
+              <label for="deckName">Collection Name</label>
+              <input id="deckName" class="form-input" type="text" placeholder="e.g., My Custom Deck" required>
+            </div>
+            <div class="form-group">
+              <label for="deckDescription">Description</label>
+              <textarea id="deckDescription" class="form-input" placeholder="What's this collection about?" required></textarea>
+            </div>
+            <div class="form-group">
+              <label for="deckCategory">Category</label>
+              <div class="category-pill-group" id="deckCategoryGroup">
+                <button type="button" class="category-pill" data-value="solo">Solo</button>
+                <button type="button" class="category-pill" data-value="together">Together</button>
+                <button type="button" class="category-pill" data-value="friends">Friends</button>
+              </div>
+              <input type="hidden" id="deckCategory" value="" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Create Collection</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div id="addQuestionsModal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Add Questions to <span id="addQuestionsTitle"></span></h2>
+          <button class="modal-close" aria-label="Close">&times;</button>
+        </div>
+        <form id="addQuestionsForm" class="modal-form">
+          <div class="form-group">
+            <label for="addQuestionsEn">Question (English)</label>
+            <textarea id="addQuestionsEn" class="form-input" placeholder="Ask a question..." required></textarea>
+          </div>
+          <div class="form-group">
+            <label for="addQuestionsTl">Question (Taglish)</label>
+            <textarea id="addQuestionsTl" class="form-input" placeholder="Tanungin sa Taglish..." required></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary">Add Question</button>
+        </form>
+        <div id="deckQuestionsPreview" class="questions-preview">
+          <!-- Questions will be listed here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Alert Modal (reusable) -->
+    <div id="alertModal" class="modal hidden">
+      <div class="modal-content alert-modal-content">
+        <div class="alert-icon" id="alertIcon"></div>
+        <h2 id="alertTitle" class="alert-title"></h2>
+        <p id="alertMessage" class="alert-message"></p>
+        <div class="alert-actions">
+          <button id="alertOkBtn" class="btn btn-primary">OK</button>
+        </div>
+      </div>
+    </div>
+    <div id="confirmModal" class="modal hidden">
+      <div class="modal-content confirm-modal-content">
+        <div class="confirm-icon" id="confirmIcon"></div>
+        <h2 id="confirmTitle" class="confirm-title"></h2>
+        <p id="confirmDescription" class="confirm-description"></p>
+        <p id="confirmWarning" class="confirm-warning"></p>
+        <div class="confirm-actions">
+          <button id="confirmCancelBtn" class="btn btn-ghost">Cancel</button>
+          <button id="confirmDeleteBtn" class="btn btn-danger">Delete deck</button>
+        </div>
+      </div>
+    </div>
+    <input id="csvInput" type="file" accept=".csv" hidden>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+  <script type="module" src="/src/capacitor-setup.js"></script>
+</body>
+</html>
+
