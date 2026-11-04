@@ -2,7 +2,7 @@
   <img src="docs/icon.png" alt="AnoNga app icon" width="140" />
 </p>
 
-<h1 align="center">AnoNga</h1>
+<h1 align="center">AnoNga?</h1>
 
 <p align="center">
   <em>A deck for every conversation.</em>
@@ -16,7 +16,7 @@
   <img alt="Offline first" src="https://img.shields.io/badge/offline-first-5A7A5C?style=for-the-badge" />
 </p>
 
-**AnoNga** is an offline conversation-card app for couples, friends, and quiet
+**AnoNga?** is an offline conversation-card app for couples, friends, and quiet
 moments with yourself. It comes with **300 built-in questions** in **English and
 Taglish**, arranged into five decks and three conversation moods: **Solo**,
 **Together**, and **Friends**.
