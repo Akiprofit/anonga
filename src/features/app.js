@@ -95,6 +95,7 @@ try {
 // Temporary storage for deck details (filled before color selection)
 let pendingDeckDetails = null;
 let editingDeckId = null;
+let infoDeckId = null;
 
 const DEFAULT_DECK_COLOR = '#c9846f';
 const CUSTOM_DECKS_KEY = 'anonga_custom_decks';
@@ -163,6 +164,31 @@ function notifySaveFailure() {
 
 function customDecksFrom(list) {
   return list.filter((deck) => deck && !deck.isDefault && !deck.isHandmade && String(deck.id).startsWith('custom_'));
+}
+
+// Persist an edit to whichever store owns the deck. Legacy imported decks live
+// under a different key; writing only the custom list made their edits look
+// saved until the next launch.
+function persistDeckEdit(deck) {
+  if (!deck) return false;
+  const id = String(deck.id || '');
+
+  if (deck.isImported || id.startsWith('imported_')) {
+    const list = readJsonArray(IMPORTED_DECKS_KEY).map((item) =>
+      item && item.id === deck.id
+        ? {
+            ...item,
+            name: deck.name,
+            description: deck.description,
+            collection: deck.collection,
+            color: deck.color,
+          }
+        : item
+    );
+    return writeJson(IMPORTED_DECKS_KEY, list);
+  }
+
+  return writeJson(CUSTOM_DECKS_KEY, customDecksFrom(allDecks));
 }
 
 function saveCustomDecks(list = allDecks) {
@@ -249,6 +275,16 @@ function resetCreationFlow() {
   window_importedQuestions = [];
   const createBtn = document.getElementById('colorCreateBtn');
   if (createBtn) createBtn.textContent = 'Create Collection';
+
+  // Edit mode reuses this wizard, so every piece of edit chrome must reset too.
+  const modal = document.getElementById('createDeckModal');
+  if (modal) modal.classList.remove('is-editing');
+  const modalTitle = document.getElementById('createDeckTitle');
+  if (modalTitle) modalTitle.textContent = 'Add New Collection';
+  const manualBack = document.getElementById('manualBackBtn');
+  if (manualBack) manualBack.textContent = 'Back';
+  const manualStepTitle = document.getElementById('manualStepTitle');
+  if (manualStepTitle) manualStepTitle.textContent = 'Step 2: Collection Details';
   colorStepOrigin = 'csvImportStep';
   selectedDeckColor = DEFAULT_DECK_COLOR;
 
@@ -289,7 +325,11 @@ function updateColorPreviewMeta() {
   if (title) title.textContent = pendingDeckDetails?.name || 'Your collection';
   if (desc) desc.textContent = pendingDeckDetails?.description || 'A little question to bring us closer.';
   if (count) {
-    const total = Array.isArray(window_importedQuestions) ? window_importedQuestions.length : 0;
+    let total = Array.isArray(window_importedQuestions) ? window_importedQuestions.length : 0;
+    if (editingDeckId) {
+      const deck = allDecks.find((item) => item.id === editingDeckId);
+      if (deck) total = Array.isArray(deck.questions) ? deck.questions.length : 0;
+    }
     count.textContent = `${total} ${total === 1 ? 'question' : 'questions'}`;
   }
 }
@@ -493,6 +533,18 @@ function setupEventListeners() {
   const createBtn = document.getElementById('createDeckBtn');
   if (createBtn) createBtn.addEventListener('click', openCreateDeckModal);
 
+  // Bind Edit Details once. Previously it was assigned each time the info modal
+  // opened, which left the button dead if that assignment was ever skipped.
+  const editDetailsBtn = document.getElementById('editDeckBtn');
+  if (editDetailsBtn) {
+    editDetailsBtn.addEventListener('click', () => {
+      const id = infoDeckId;
+      if (!id) return;
+      closeModals();
+      openEditCollectionModal(id);
+    });
+  }
+
   // Every form exists in the static markup, so bind each one exactly once.
   const csvForm = document.getElementById('csvImportForm');
   if (csvForm) csvForm.addEventListener('submit', handleCsvImport);
@@ -510,7 +562,17 @@ function setupEventListeners() {
   if (manualBtn) manualBtn.addEventListener('click', switchToManualAdd);
 
   const manualBackBtn = document.getElementById('manualBackBtn');
-  if (manualBackBtn) manualBackBtn.addEventListener('click', switchBackToCSVStep);
+  if (manualBackBtn) {
+    manualBackBtn.addEventListener('click', () => {
+      // In edit mode "Back" cancels the edit; it must never drop into the CSV
+      // import step and start a second collection.
+      if (editingDeckId) {
+        closeModals();
+        return;
+      }
+      switchBackToCSVStep();
+    });
+  }
 
   const detailsBackBtn = document.getElementById('deckDetailsBackBtn');
   if (detailsBackBtn) detailsBackBtn.addEventListener('click', switchBackToCSVStep);
@@ -932,6 +994,13 @@ function renderCollectionsTab() {
 
     card.addEventListener('click', (event) => {
       if (event.target.closest('.collection-delete-btn')) return;
+      // The pencil icon is an edit affordance; tapping it should not make the
+      // user hunt for a second "Edit Details" button inside the info modal.
+      if (event.target.closest('.card-icon')) {
+        const id = card.dataset.deckId;
+        if (id) openEditCollectionModal(id);
+        return;
+      }
       openCard();
     });
 
@@ -1020,6 +1089,7 @@ function renderDecksList() {
 window.viewDeckDetails = function(deckId) {
   const deck = allDecks.find(d => d.id === deckId);
   if (deck) {
+    infoDeckId = deck.id;
     // Show info modal with delete option
     document.getElementById('infoDeckName').textContent = deck.name;
     document.getElementById('infoDeckDescription').textContent = deck.description;
@@ -1032,10 +1102,6 @@ window.viewDeckDetails = function(deckId) {
         editBtn.style.display = 'none';
       } else {
         editBtn.style.display = '';
-        editBtn.onclick = () => {
-          closeModals();
-          openEditCollectionModal(deck.id);
-        };
       }
     }
 
@@ -1802,6 +1868,13 @@ function openEditCollectionModal(deckId) {
   resetCreationFlow();
   editingDeckId = deckId;
 
+  // Make edit mode unmistakable instead of reusing the "new collection" chrome.
+  modal.classList.add('is-editing');
+  const modalTitle = document.getElementById('createDeckTitle');
+  if (modalTitle) modalTitle.textContent = 'Edit Collection';
+  const manualBack = document.getElementById('manualBackBtn');
+  if (manualBack) manualBack.textContent = 'Cancel';
+
   const createBtn = document.getElementById('colorCreateBtn');
   if (createBtn) createBtn.textContent = 'Save Changes';
 
@@ -1824,6 +1897,15 @@ function openEditCollectionModal(deckId) {
 
   modal.classList.remove('hidden');
   showCreationStep('manualAddStep');
+
+  // Show the real collection in the preview, not the "0 questions" placeholder.
+  const previewTitle = document.querySelector('.color-preview-title');
+  if (previewTitle) previewTitle.textContent = deck.name || 'Your collection';
+  const previewDesc = document.querySelector('.color-preview-desc');
+  if (previewDesc) previewDesc.textContent = deck.description || '';
+  const previewCount = document.querySelector('.color-preview-count');
+  if (previewCount) previewCount.textContent = questionCountLabel((deck.questions || []).length);
+
   updateColorPreview(selectedDeckColor);
 }
 
@@ -1881,13 +1963,13 @@ function handleCreateDeck(e) {
     return;
   }
 
-  // Check for duplicate deck name (skip when editing the same deck)
-  if (!editingDeckId) {
-    const existingDeck = allDecks.find(d => d.name.toLowerCase().trim() === name.toLowerCase().trim());
-    if (existingDeck) {
-      showAlertModal({ title: 'Duplicate Deck', message: 'A deck with this name already exists. Please choose a different name.', type: 'warning' });
-      return;
-    }
+  // Check for duplicate deck name, ignoring the deck being edited.
+  const existingDeck = allDecks.find(d =>
+    d.id !== editingDeckId && d.name.toLowerCase().trim() === name.toLowerCase().trim()
+  );
+  if (existingDeck) {
+    showAlertModal({ title: 'Duplicate Deck', message: 'A deck with this name already exists. Please choose a different name.', type: 'warning' });
+    return;
   }
 
   // Store details temporarily - color selection is the final step
@@ -2166,7 +2248,7 @@ function createPendingCollection() {
       deck.collection = category;
       deck.color = color;
 
-      if (!writeJson(CUSTOM_DECKS_KEY, customDecksFrom(allDecks))) {
+      if (!persistDeckEdit(deck)) {
         // Roll back on failure
         deck.name = previous.name;
         deck.description = previous.description;
@@ -2176,7 +2258,6 @@ function createPendingCollection() {
         return;
       }
 
-      const editedId = editingDeckId;
       editingDeckId = null;
       closeModals();
       renderDecksList();
