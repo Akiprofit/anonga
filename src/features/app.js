@@ -94,6 +94,7 @@ try {
 
 // Temporary storage for deck details (filled before color selection)
 let pendingDeckDetails = null;
+let editingDeckId = null;
 
 const DEFAULT_DECK_COLOR = '#c9846f';
 const CUSTOM_DECKS_KEY = 'anonga_custom_decks';
@@ -244,7 +245,10 @@ function showCreationStep(stepId) {
 // and whenever it closes, so a cancelled import can never leak into a new deck.
 function resetCreationFlow() {
   pendingDeckDetails = null;
+  editingDeckId = null;
   window_importedQuestions = [];
+  const createBtn = document.getElementById('colorCreateBtn');
+  if (createBtn) createBtn.textContent = 'Create Collection';
   colorStepOrigin = 'csvImportStep';
   selectedDeckColor = DEFAULT_DECK_COLOR;
 
@@ -1022,6 +1026,19 @@ window.viewDeckDetails = function(deckId) {
     document.getElementById('infoDeckCount').textContent = `${questionCountLabel(deck.count || 0)} in this deck`;
     document.getElementById('deckInfoModal').classList.remove('hidden');
 
+    const editBtn = document.getElementById('editDeckBtn');
+    if (editBtn) {
+      if (deck.isDefault || deck.isHandmade || deck.id === 'handmade') {
+        editBtn.style.display = 'none';
+      } else {
+        editBtn.style.display = '';
+        editBtn.onclick = () => {
+          closeModals();
+          openEditCollectionModal(deck.id);
+        };
+      }
+    }
+
     const addQuestionsBtn = document.getElementById('addQuestionsToDeckBtn');
     if (addQuestionsBtn) {
       addQuestionsBtn.onclick = () => {
@@ -1044,21 +1061,52 @@ window.viewDeckDetails = function(deckId) {
 
 function openFavoritesView() {
   const favorites = getFavorites();
-  // For now, we'll show in modal
   const favsList = document.getElementById('favoritesList');
-  if (favsList) {
-    if (favorites.length === 0) {
-      favsList.innerHTML = '<div class="favorites-empty">No favorites yet. Heart questions while playing!</div>';
-    } else {
-      favsList.innerHTML = favorites.map(fav => `
-        <div class="favorite-item">
-          <div class="favorite-item-text">${escapeHtml(fav.en)}</div>
-          <div class="favorite-item-lang">— ${escapeHtml(fav.tl)}</div>
-        </div>
-      `).join('');
-    }
-    document.getElementById('favoritesModal').classList.remove('hidden');
+  if (!favsList) return;
+
+  if (favorites.length === 0) {
+    favsList.innerHTML = '<div class="favorites-empty">No favorites yet. Heart questions while playing!</div>';
+  } else {
+    favsList.innerHTML = favorites.map((fav, idx) => `
+      <div class="favorite-item" data-fav-index="${idx}">
+        <div class="favorite-item-text">${escapeHtml(fav.en)}</div>
+        <div class="favorite-item-lang">— ${escapeHtml(fav.tl)}</div>
+        <button type="button" class="favorite-remove-btn" data-fav-id="${escapeHtml(fav.id)}" aria-label="Remove from favorites">&times;</button>
+      </div>
+    `).join('');
+
+    favsList.querySelectorAll('.favorite-remove-btn').forEach((btn) => {
+      btn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        removeFavorite(btn.dataset.favId);
+        openFavoritesView();
+      });
+    });
   }
+
+  // Play-all button
+  const playBtn = document.getElementById('playFavoritesBtn');
+  if (playBtn) {
+    playBtn.style.display = favorites.length ? '' : 'none';
+    playBtn.onclick = () => {
+      const favs = getFavorites();
+      if (!favs.length) return;
+      const favDeck = {
+        id: 'favorites',
+        name: 'Favorites',
+        description: 'Hearted by you',
+        collection: 'favorites',
+        color: '#c9846f',
+        theme: 'romantic',
+        isDefault: true,
+        questions: favs.map((q) => ({ ...q })),
+      };
+      closeModals();
+      startDeckSession(favDeck);
+    };
+  }
+
+  document.getElementById('favoritesModal').classList.remove('hidden');
 }
 
 window.openFavoritesView = openFavoritesView;
@@ -1740,8 +1788,46 @@ function openCreateDeckModal() {
   // Clear every transient piece of state first so a cancelled import can never
   // leak into the next collection.
   resetCreationFlow();
+  editingDeckId = null;
+  const createBtn = document.getElementById('colorCreateBtn');
+  if (createBtn) createBtn.textContent = 'Create Collection';
   modal.classList.remove('hidden');
 }
+
+function openEditCollectionModal(deckId) {
+  const deck = allDecks.find((d) => d.id === deckId);
+  const modal = document.getElementById('createDeckModal');
+  if (!deck || !modal) return;
+
+  resetCreationFlow();
+  editingDeckId = deckId;
+
+  const createBtn = document.getElementById('colorCreateBtn');
+  if (createBtn) createBtn.textContent = 'Save Changes';
+
+  // Pre-fill details
+  const name = document.getElementById('newDeckName');
+  const desc = document.getElementById('newDeckDescription');
+  if (name) name.value = deck.name || '';
+  if (desc) desc.value = deck.description || '';
+
+  // Category
+  if (deck.collection) {
+    const pill = document.querySelector(`#newDeckCollectionGroup .category-pill[data-value="${deck.collection}"]`);
+    if (pill) pill.click();
+  }
+
+  // Color
+  selectedDeckColor = safeColor(deck.color);
+  const radio = document.querySelector(`input[name="selectedColor"][value="${selectedDeckColor}"]`);
+  if (radio) radio.checked = true;
+
+  modal.classList.remove('hidden');
+  showCreationStep('manualAddStep');
+  updateColorPreview(selectedDeckColor);
+}
+
+window.openEditCollectionModal = openEditCollectionModal;
 
 function updateColorPreview(color) {
   const previewCard = document.getElementById('colorPreviewCard');
@@ -1795,11 +1881,13 @@ function handleCreateDeck(e) {
     return;
   }
 
-  // Check for duplicate deck name
-  const existingDeck = allDecks.find(d => d.name.toLowerCase().trim() === name.toLowerCase().trim());
-  if (existingDeck) {
-    showAlertModal({ title: 'Duplicate Deck', message: 'A deck with this name already exists. Please choose a different name.', type: 'warning' });
-    return;
+  // Check for duplicate deck name (skip when editing the same deck)
+  if (!editingDeckId) {
+    const existingDeck = allDecks.find(d => d.name.toLowerCase().trim() === name.toLowerCase().trim());
+    if (existingDeck) {
+      showAlertModal({ title: 'Duplicate Deck', message: 'A deck with this name already exists. Please choose a different name.', type: 'warning' });
+      return;
+    }
   }
 
   // Store details temporarily - color selection is the final step
@@ -1813,9 +1901,15 @@ function handleCreateDeck(e) {
   showCreationStep('colorSelectStep');
   updateColorPreviewMeta();
 
-  // Reset color selection
+  // Reset color selection, pre-selecting the deck's colour when editing.
   document.querySelectorAll('input[name="selectedColor"]').forEach(r => r.checked = false);
-  const defaultColor = document.getElementById('color1');
+  let initialColor = DEFAULT_DECK_COLOR;
+  if (editingDeckId) {
+    const ed = allDecks.find(d => d.id === editingDeckId);
+    if (ed) initialColor = safeColor(ed.color);
+  }
+  const matchingRadio = Array.from(document.querySelectorAll('input[name="selectedColor"]')).find(r => safeColor(r.value) === initialColor);
+  const defaultColor = matchingRadio || document.getElementById('color1');
   if (defaultColor) {
     defaultColor.checked = true;
     selectedDeckColor = safeColor(defaultColor.value);
@@ -2018,9 +2112,15 @@ function handleDeckDetails(e) {
   showCreationStep('colorSelectStep');
   updateColorPreviewMeta();
 
-  // Reset color selection
+  // Reset color selection, pre-selecting the deck's colour when editing.
   document.querySelectorAll('input[name="selectedColor"]').forEach(r => r.checked = false);
-  const defaultColor = document.getElementById('color1');
+  let initialColor = DEFAULT_DECK_COLOR;
+  if (editingDeckId) {
+    const ed = allDecks.find(d => d.id === editingDeckId);
+    if (ed) initialColor = safeColor(ed.color);
+  }
+  const matchingRadio = Array.from(document.querySelectorAll('input[name="selectedColor"]')).find(r => safeColor(r.value) === initialColor);
+  const defaultColor = matchingRadio || document.getElementById('color1');
   if (defaultColor) {
     defaultColor.checked = true;
     selectedDeckColor = safeColor(defaultColor.value);
@@ -2052,6 +2152,39 @@ function createPendingCollection() {
 
   isCreatingCollection = true;
   try {
+    const color = safeColor(selected.value);
+
+    if (editingDeckId) {
+      const deck = allDecks.find((d) => d.id === editingDeckId);
+      if (!deck) {
+        showAlertModal({ title: 'Not Found', message: 'Collection no longer exists.', type: 'error' });
+        return;
+      }
+      const previous = { name: deck.name, description: deck.description, collection: deck.collection, color: deck.color };
+      deck.name = name;
+      deck.description = description;
+      deck.collection = category;
+      deck.color = color;
+
+      if (!writeJson(CUSTOM_DECKS_KEY, customDecksFrom(allDecks))) {
+        // Roll back on failure
+        deck.name = previous.name;
+        deck.description = previous.description;
+        deck.collection = previous.collection;
+        deck.color = previous.color;
+        notifySaveFailure();
+        return;
+      }
+
+      const editedId = editingDeckId;
+      editingDeckId = null;
+      closeModals();
+      renderDecksList();
+      renderCollectionsTab();
+      showToast(`Updated collection: "${name}".`, 'success');
+      return;
+    }
+
     const deckId = `custom_${Date.now()}`;
     const questions = (Array.isArray(window_importedQuestions) ? window_importedQuestions : []).map((question, index) => ({
       ...question,
@@ -2065,7 +2198,7 @@ function createPendingCollection() {
       collection: category,
       count: questions.length,
       questions,
-      color: safeColor(selected.value),
+      color,
       theme: themeForCollection(category),
       isCustom: true,
     };
@@ -2085,6 +2218,7 @@ function createPendingCollection() {
     renderCollectionsTab();
   } finally {
     isCreatingCollection = false;
+    editingDeckId = null;
   }
 }
 

@@ -2453,6 +2453,28 @@ body {
   color: #999;
 }
 
+.favorite-item {
+  position: relative;
+}
+
+.favorite-remove-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(184, 87, 122, 0.15);
+  color: var(--accent-rose);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .favorites-empty {
   text-align: center;
   color: #999;
