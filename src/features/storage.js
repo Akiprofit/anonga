@@ -7,16 +7,26 @@ const STORAGE_KEYS = {
   IMPORTED_DECKS: 'anonga_imported_decks',
 };
 
+function safeSetItem(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    console.error(`Could not write ${key}:`, error);
+    return false;
+  }
+}
+
 export function initStorage() {
-  // Initialize storage on app start
+  // Initialize storage on app start. Existing values are never overwritten.
   if (!localStorage.getItem(STORAGE_KEYS.LANGUAGE)) {
-    localStorage.setItem(STORAGE_KEYS.LANGUAGE, 'en');
+    safeSetItem(STORAGE_KEYS.LANGUAGE, 'en');
   }
   if (!localStorage.getItem(STORAGE_KEYS.FAVORITES)) {
-    localStorage.setItem(STORAGE_KEYS.FAVORITES, '[]');
+    safeSetItem(STORAGE_KEYS.FAVORITES, '[]');
   }
   if (!localStorage.getItem(STORAGE_KEYS.CUSTOM_QUESTIONS)) {
-    localStorage.setItem(STORAGE_KEYS.CUSTOM_QUESTIONS, '[]');
+    safeSetItem(STORAGE_KEYS.CUSTOM_QUESTIONS, '[]');
   }
 }
 
@@ -25,41 +35,30 @@ export function getLanguage() {
 }
 
 export function setLanguage(lang) {
-  localStorage.setItem(STORAGE_KEYS.LANGUAGE, lang);
+  return safeSetItem(STORAGE_KEYS.LANGUAGE, lang);
 }
 
 export function getFavorites() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEYS.FAVORITES) || '[]');
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.FAVORITES) || '[]');
+    return Array.isArray(parsed) ? parsed.filter((fav) => fav && typeof fav === 'object') : [];
   } catch {
     return [];
   }
 }
 
 export function addFavorite(question) {
+  if (!question || !question.id) return false;
   const favorites = getFavorites();
   if (!favorites.some((fav) => fav.id === question.id)) {
     favorites.push(question);
-    localStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify(favorites));
+    return safeSetItem(STORAGE_KEYS.FAVORITES, JSON.stringify(favorites));
   }
+  return true;
 }
 
 export function removeFavorite(questionId) {
   const favorites = getFavorites();
   const filtered = favorites.filter((fav) => fav.id !== questionId);
-  localStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify(filtered));
-}
-
-export function getCustomQuestions() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEYS.CUSTOM_QUESTIONS) || '[]');
-  } catch {
-    return [];
-  }
-}
-
-export function saveCustomQuestion(question) {
-  const questions = getCustomQuestions();
-  questions.push(question);
-  localStorage.setItem(STORAGE_KEYS.CUSTOM_QUESTIONS, JSON.stringify(questions));
+  return safeSetItem(STORAGE_KEYS.FAVORITES, JSON.stringify(filtered));
 }

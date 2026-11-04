@@ -1,3 +1,4 @@
+import { App as CapacitorApp } from '@capacitor/app';
 import { initStorage, getLanguage, setLanguage, getFavorites, addFavorite, removeFavorite } from './storage.js';
 import { defaultQuestions } from '../data/questions.js';
 import {
@@ -60,6 +61,9 @@ let currentCollection = 'all';
 let currentTab = 'decks';
 let selectedDeckColor = '#c9846f';
 let window_importedQuestions = [];
+// Which step opened the color picker, so Back returns to the right place.
+let colorStepOrigin = 'csvImportStep';
+let isCreatingCollection = false;
 
 // Play session
 let sessionOrder = [];
@@ -77,25 +81,214 @@ let dragOffset = 0;
 let dragOffsetY = 0;
 let isDragging = false;
 
-// Capacitor Filesystem plugin (available on native Android/iOS)
-let isNativePlatform = false;
+// Capacitor App plugin (native Android/iOS back button). Loaded lazily so the
+// web build keeps working even if the plugin is unavailable.
+let nativeAppPlugin = null;
 try {
-  if (window.Capacitor) {
-    isNativePlatform = window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
-    if (window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
-      CapacitorFilesystem = window.Capacitor.Plugins.Filesystem;
-      console.log('Filesystem plugin found, native:', isNativePlatform);
-    } else {
-      console.log('Filesystem plugin not found in Capacitor.Plugins');
-    }
-  } else {
-    console.log('Capacitor not available');
+  if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+    nativeAppPlugin = CapacitorApp;
   }
-} catch (e) {
-  console.log('Filesystem plugin not available:', e);
+} catch (error) {
+  console.warn('Capacitor App plugin unavailable:', error);
 }
+
 // Temporary storage for deck details (filled before color selection)
 let pendingDeckDetails = null;
+
+const DEFAULT_DECK_COLOR = '#c9846f';
+const CUSTOM_DECKS_KEY = 'anonga_custom_decks';
+const IMPORTED_DECKS_KEY = 'anonga_imported_decks';
+const HANDMADE_KEY = 'anonga_handmade_questions';
+const DECK_OVERRIDES_KEY = 'anonga_deck_questions';
+const DECK_THEMES_KEY = 'anonga_deck_themes';
+
+/* ============================================================================
+   Shared helpers
+   ============================================================================ */
+
+// Escape anything that came from the user before interpolating it into HTML.
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[char]));
+}
+
+function isValidHexColor(value) {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+}
+
+function safeColor(value, fallback = DEFAULT_DECK_COLOR) {
+  return isValidHexColor(value) ? value : fallback;
+}
+
+function readJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed === null || parsed === undefined ? fallback : parsed;
+  } catch (error) {
+    console.error(`Could not read ${key}:`, error);
+    return fallback;
+  }
+}
+
+function readJsonArray(key) {
+  const value = readJson(key, []);
+  return Array.isArray(value) ? value : [];
+}
+
+function writeJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (error) {
+    console.error(`Could not save ${key}:`, error);
+    return false;
+  }
+}
+
+function notifySaveFailure() {
+  showAlertModal({
+    title: 'Could Not Save',
+    message: 'AnoNga could not write to device storage. Your change was not saved. Free some space and try again.',
+    type: 'error',
+  });
+}
+
+function customDecksFrom(list) {
+  return list.filter((deck) => deck && !deck.isDefault && !deck.isHandmade && String(deck.id).startsWith('custom_'));
+}
+
+function saveCustomDecks(list = allDecks) {
+  return writeJson(CUSTOM_DECKS_KEY, customDecksFrom(list));
+}
+
+function saveDeckQuestionOverrides() {
+  const overrides = {};
+  allDecks.forEach((deck) => {
+    if (deck && deck.hasQuestionOverrides && Array.isArray(deck.questions)) {
+      overrides[deck.id] = deck.questions;
+    }
+  });
+  return writeJson(DECK_OVERRIDES_KEY, overrides);
+}
+
+// Persist questions for any deck type. Returns false when storage fails.
+function saveDeckQuestions(deck) {
+  if (!deck || !Array.isArray(deck.questions)) return false;
+  if (deck.isHandmade || deck.id === 'handmade') {
+    return writeJson(HANDMADE_KEY, deck.questions);
+  }
+  if (String(deck.id).startsWith('custom_')) {
+    return saveCustomDecks();
+  }
+  deck.hasQuestionOverrides = true;
+  return saveDeckQuestionOverrides();
+}
+
+function refreshDeckCounts() {
+  allDecks.forEach((deck) => {
+    if (deck && Array.isArray(deck.questions)) deck.count = deck.questions.length;
+  });
+}
+
+function questionCountLabel(count) {
+  const value = Number.isFinite(count) ? count : 0;
+  return `${value} ${value === 1 ? 'question' : 'questions'}`;
+}
+
+function resetCategoryGroup(groupId, hiddenId) {
+  const group = document.getElementById(groupId);
+  const hidden = document.getElementById(hiddenId);
+  if (hidden) hidden.value = '';
+  if (!group) return;
+  group.querySelectorAll('.category-pill').forEach((pill) => {
+    pill.classList.remove('selected');
+    pill.setAttribute('aria-pressed', 'false');
+  });
+}
+
+// Category pills are static markup, so bind them exactly once at startup.
+function setupCategoryPills(groupId, hiddenId) {
+  const group = document.getElementById(groupId);
+  const hidden = document.getElementById(hiddenId);
+  if (!group || !hidden) return;
+
+  group.querySelectorAll('.category-pill').forEach((pill) => {
+    pill.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const value = pill.dataset.value;
+      hidden.value = value;
+      group.querySelectorAll('.category-pill').forEach((other) => {
+        const isSelected = other.dataset.value === value;
+        other.classList.toggle('selected', isSelected);
+        other.setAttribute('aria-pressed', String(isSelected));
+      });
+    });
+  });
+}
+
+function showCreationStep(stepId) {
+  document.querySelectorAll('#createDeckModal .creation-step').forEach((step) => {
+    step.classList.toggle('active', step.id === stepId);
+  });
+}
+
+// Clears every piece of transient creation state. Called when the modal opens
+// and whenever it closes, so a cancelled import can never leak into a new deck.
+function resetCreationFlow() {
+  pendingDeckDetails = null;
+  window_importedQuestions = [];
+  colorStepOrigin = 'csvImportStep';
+  selectedDeckColor = DEFAULT_DECK_COLOR;
+
+  const csvForm = document.getElementById('csvImportForm');
+  const createForm = document.getElementById('createDeckForm');
+  const detailsForm = document.getElementById('deckDetailsForm');
+  if (csvForm) csvForm.reset();
+  if (createForm) createForm.reset();
+  if (detailsForm) detailsForm.reset();
+
+  const csvFile = document.getElementById('csvFile');
+  if (csvFile) csvFile.value = '';
+
+  resetCategoryGroup('newDeckCollectionGroup', 'newDeckCollection');
+  resetCategoryGroup('deckCategoryGroup', 'deckCategory');
+
+  document.querySelectorAll('input[name="selectedColor"]').forEach((radio) => {
+    radio.checked = false;
+  });
+  const defaultColor = document.getElementById('color1');
+  if (defaultColor) defaultColor.checked = true;
+
+  const previewTitle = document.querySelector('.color-preview-title');
+  if (previewTitle) previewTitle.textContent = 'Your collection';
+  const previewDesc = document.querySelector('.color-preview-desc');
+  if (previewDesc) previewDesc.textContent = 'A little question to bring us closer.';
+  const previewCount = document.querySelector('.color-preview-count');
+  if (previewCount) previewCount.textContent = '0 questions';
+
+  updateColorPreview(DEFAULT_DECK_COLOR);
+  showCreationStep('csvImportStep');
+}
+
+function updateColorPreviewMeta() {
+  const title = document.querySelector('.color-preview-title');
+  const desc = document.querySelector('.color-preview-desc');
+  const count = document.querySelector('.color-preview-count');
+  if (title) title.textContent = pendingDeckDetails?.name || 'Your collection';
+  if (desc) desc.textContent = pendingDeckDetails?.description || 'A little question to bring us closer.';
+  if (count) {
+    const total = Array.isArray(window_importedQuestions) ? window_importedQuestions.length : 0;
+    count.textContent = `${total} ${total === 1 ? 'question' : 'questions'}`;
+  }
+}
 
 const defaultDecks = [
   {
@@ -171,11 +364,14 @@ export function initApp() {
 
     // Load imported and custom decks
     loadImportedDecks();
+    loadDeckQuestionOverrides();
     ensureAllQuestionIds();
+    refreshDeckCounts();
 
     // Setup event listeners
     setupEventListeners();
     setupPlayScreenListeners();
+    setupAndroidBackButton();
 
     // Render icons
     renderAllIcons();
@@ -189,35 +385,45 @@ export function initApp() {
   }
 }
 
+function addLoadedDecks(list, isImported) {
+  if (!Array.isArray(list)) return;
+  list.forEach((deck) => {
+    if (!deck || typeof deck !== 'object' || !deck.id) return;
+    if (allDecks.find((existing) => existing.id === deck.id)) return;
+    if (!Array.isArray(deck.questions)) deck.questions = [];
+    if (isImported) deck.isImported = true;
+    deck.count = deck.questions.length;
+    allDecks.push(deck);
+  });
+}
+
 function loadImportedDecks() {
   try {
-    const imported = localStorage.getItem('anonga_imported_decks');
-    if (imported) {
-      const importedList = JSON.parse(imported);
-      importedList.forEach(deck => {
-        if (!allDecks.find(d => d.id === deck.id)) {
-          allDecks.push(deck);
-        }
-      });
-    }
+    addLoadedDecks(readJsonArray(IMPORTED_DECKS_KEY), true);
   } catch (e) {
     console.error('Error loading imported decks:', e);
   }
 
   try {
-    const custom = localStorage.getItem('anonga_custom_decks');
-    if (custom) {
-      const customList = JSON.parse(custom);
-      customList.forEach(deck => {
-        if (!allDecks.find(d => d.id === deck.id)) {
-          allDecks.push(deck);
-        }
-      });
-    }
+    addLoadedDecks(readJsonArray(CUSTOM_DECKS_KEY), false);
   } catch (e) {
     console.error('Error loading custom decks:', e);
   }
 }
+
+// Questions added to or removed from built-in decks are stored separately so
+// they survive a restart without touching the shipped question data.
+function loadDeckQuestionOverrides() {
+  const overrides = readJson(DECK_OVERRIDES_KEY, {});
+  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return;
+  allDecks.forEach((deck) => {
+    if (Array.isArray(overrides[deck.id])) {
+      deck.questions = overrides[deck.id];
+      deck.hasQuestionOverrides = true;
+    }
+  });
+}
+
 
 function ensureQuestionIdsForDeck(deck) {
   if (!deck || !Array.isArray(deck.questions)) return;
@@ -233,23 +439,42 @@ function ensureAllQuestionIds() {
 }
 
 function setupEventListeners() {
+  // Keep keyboard focus inside an open modal (basic focus trap).
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    const modal = Array.from(document.querySelectorAll('.modal:not(.hidden)')).pop();
+    if (!modal) return;
+    const focusable = modal.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+
   // Language toggles
   const langHomeBtn = document.getElementById('langToggleHome');
   if (langHomeBtn) langHomeBtn.addEventListener('click', toggleLanguageHome);
 
-  // Tab navigation
-  document.querySelectorAll('.tab-navigation .tab-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      switchTab(e.target.dataset.tab);
-    });
+  // Tab navigation. Always read the button (currentTarget), never the tapped
+  // child icon, otherwise the pane id is undefined and both panes go blank.
+  document.querySelectorAll('.tab-navigation .tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
 
   // Collection tabs (filters)
-  document.querySelectorAll('.collection-tabs .tab-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      document.querySelectorAll('.collection-tabs .tab-btn').forEach(b => b.classList.remove('active'));
-      e.target.classList.add('active');
-      currentCollection = e.target.dataset.collection;
+  document.querySelectorAll('.collection-tabs .tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.collection-tabs .tab-btn').forEach((other) => other.classList.remove('active'));
+      btn.classList.add('active');
+      currentCollection = btn.dataset.collection || 'all';
       renderDecksList();
     });
   });
@@ -264,80 +489,130 @@ function setupEventListeners() {
   const createBtn = document.getElementById('createDeckBtn');
   if (createBtn) createBtn.addEventListener('click', openCreateDeckModal);
 
+  // Every form exists in the static markup, so bind each one exactly once.
+  const csvForm = document.getElementById('csvImportForm');
+  if (csvForm) csvForm.addEventListener('submit', handleCsvImport);
+
+  const createForm = document.getElementById('createDeckForm');
+  if (createForm) createForm.addEventListener('submit', handleCreateDeck);
+
+  const detailsForm = document.getElementById('deckDetailsForm');
+  if (detailsForm) detailsForm.addEventListener('submit', handleDeckDetails);
+
+  const addQuestionsForm = document.getElementById('addQuestionsForm');
+  if (addQuestionsForm) addQuestionsForm.addEventListener('submit', handleAddQuestion);
+
+  const manualBtn = document.getElementById('manualImportBtn');
+  if (manualBtn) manualBtn.addEventListener('click', switchToManualAdd);
+
+  const manualBackBtn = document.getElementById('manualBackBtn');
+  if (manualBackBtn) manualBackBtn.addEventListener('click', switchBackToCSVStep);
+
+  const detailsBackBtn = document.getElementById('deckDetailsBackBtn');
+  if (detailsBackBtn) detailsBackBtn.addEventListener('click', switchBackToCSVStep);
+
+  // Color selection step
+  document.querySelectorAll('input[name="selectedColor"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return;
+      selectedDeckColor = safeColor(radio.value);
+      updateColorPreview(selectedDeckColor);
+    });
+  });
+
+  const colorBackBtn = document.getElementById('colorBackBtn');
+  if (colorBackBtn) {
+    colorBackBtn.addEventListener('click', () => {
+      showCreationStep(colorStepOrigin === 'manualAddStep' ? 'manualAddStep' : 'deckDetailsStep');
+    });
+  }
+
+  const colorCreateBtn = document.getElementById('colorCreateBtn');
+  if (colorCreateBtn) colorCreateBtn.addEventListener('click', createPendingCollection);
+
+  setupCategoryPills('deckCategoryGroup', 'deckCategory');
+  setupCategoryPills('newDeckCollectionGroup', 'newDeckCollection');
+
   // Modal close
-  document.querySelectorAll('.modal-close').forEach(btn => {
+  document.querySelectorAll('.modal-close').forEach((btn) => {
     btn.addEventListener('click', closeModals);
   });
 
-  document.querySelectorAll('.modal').forEach(modal => {
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) closeModals();
+  document.querySelectorAll('.modal').forEach((modal) => {
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) closeModals();
     });
   });
 }
 
-// Attach form listeners after modal is shown
-function attachModalListeners() {
-  // CSV import form
-  const csvForm = document.getElementById('csvImportForm');
-  if (csvForm) {
-    csvForm.removeEventListener('submit', handleCsvImport);
-    csvForm.addEventListener('submit', handleCsvImport);
-  }
-
-  // Manual create deck form
-  const createForm = document.getElementById('createDeckForm');
-  if (createForm) {
-    createForm.removeEventListener('submit', handleCreateDeck);
-    createForm.addEventListener('submit', handleCreateDeck);
-  }
-
-  // Deck details form (after CSV import)
-  const detailsForm = document.getElementById('deckDetailsForm');
-  if (detailsForm) {
-    detailsForm.removeEventListener('submit', handleDeckDetails);
-    detailsForm.addEventListener('submit', handleDeckDetails);
-  }
-
-  // Manual import button
-  const manualBtn = document.getElementById('manualImportBtn');
-  if (manualBtn) {
-    manualBtn.removeEventListener('click', switchToManualAdd);
-    manualBtn.addEventListener('click', switchToManualAdd);
-  }
-
-  // Add questions form
-  const addQuestionsForm = document.getElementById('addQuestionsForm');
-  if (addQuestionsForm) {
-    addQuestionsForm.removeEventListener('submit', handleAddQuestion);
-    addQuestionsForm.addEventListener('submit', handleAddQuestion);
-  }
+function setupAndroidBackButton() {
+  if (!nativeAppPlugin || typeof nativeAppPlugin.addListener !== 'function') return;
+  nativeAppPlugin.addListener('backButton', handleAndroidBackButton);
 }
 
-function methodBtnHandler(e) {
-  switchCreationMethod(e.currentTarget.dataset.method);
+function isModalOpen(id) {
+  const modal = document.getElementById(id);
+  return Boolean(modal && !modal.classList.contains('hidden'));
+}
+
+// Android Back: close the top-most transient UI first, never leave a promise
+// hanging, then walk back from play, and only exit from the home screen.
+function handleAndroidBackButton() {
+  if (isModalOpen('alertModal')) {
+    document.getElementById('alertOkBtn')?.click();
+    return;
+  }
+  if (isModalOpen('confirmModal')) {
+    document.getElementById('confirmCancelBtn')?.click();
+    return;
+  }
+
+  const completion = document.getElementById('completionOverlay');
+  if (completion && completion.classList.contains('is-visible')) {
+    hideCompletion();
+    return;
+  }
+
+  const openModals = document.querySelectorAll('.modal:not(.hidden)');
+  if (openModals.length > 0) {
+    closeModals();
+    return;
+  }
+
+  const playScreen = document.getElementById('playScreen');
+  if (playScreen && playScreen.classList.contains('active')) {
+    goBack();
+    return;
+  }
+
+  if (nativeAppPlugin && typeof nativeAppPlugin.exitApp === 'function') {
+    nativeAppPlugin.exitApp().catch(() => {});
+  }
 }
 
 function switchTab(tab) {
-  currentTab = tab;
+  const nextTab = tab === 'collections' ? 'collections' : 'decks';
+  currentTab = nextTab;
 
   // Update tab buttons
-  document.querySelectorAll('.tab-navigation .tab-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === tab);
+  document.querySelectorAll('.tab-navigation .tab-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.tab === nextTab);
   });
 
   // Update tab content
-  document.querySelectorAll('.tab-content').forEach(content => {
+  document.querySelectorAll('.tab-content').forEach((content) => {
     content.classList.remove('active');
   });
 
-  if (tab === 'decks') {
+  if (nextTab === 'decks') {
     document.getElementById('decksTab').classList.add('active');
-  } else if (tab === 'collections') {
+    renderDecksList();
+  } else {
     document.getElementById('collectionsTab').classList.add('active');
     renderCollectionsTab();
   }
 }
+
 
 // Reusable confirmation modal
 let confirmModalResolve = null;
@@ -443,11 +718,16 @@ function showToast(message, type = 'info', duration = 3000) {
     info: 'ℹ'
   };
 
-  toast.innerHTML = `
-    <span class="toast-icon">${icons[type] || 'ℹ'}</span>
-    <span class="toast-message">${message}</span>
-  `;
+  const iconEl = document.createElement('span');
+  iconEl.className = 'toast-icon';
+  iconEl.textContent = icons[type] || 'ℹ';
 
+  const messageEl = document.createElement('span');
+  messageEl.className = 'toast-message';
+  messageEl.textContent = String(message ?? '');
+
+  toast.appendChild(iconEl);
+  toast.appendChild(messageEl);
   container.appendChild(toast);
 
   // Auto-remove after duration
@@ -538,8 +818,8 @@ window.confirm = function(message) {
 
 window.deleteDeck = deleteDeck;
 
-function deleteDeck(deckId) {
-  const deck = allDecks.find(d => d.id === deckId);
+async function deleteDeck(deckId) {
+  const deck = allDecks.find((item) => item.id === deckId);
   if (!deck) return;
 
   if (deck.isDefault) {
@@ -547,80 +827,119 @@ function deleteDeck(deckId) {
     return;
   }
 
-  showConfirmModal({
-    title: 'Delete this deck?',
+  const confirmed = await showConfirmModal({
+    title: 'Delete this collection?',
     description: `You're about to delete "${deck.name}".`,
-    warning: 'This will permanently remove the deck and its questions. You can\'t undo this action.',
-    confirmText: 'Delete deck',
+    warning: "This will permanently remove the collection and its questions. You can't undo this action.",
+    confirmText: 'Delete collection',
     cancelText: 'Cancel',
-    isDanger: true
-  }).then((confirmed) => {
-    if (!confirmed) return;
+    isDanger: true,
+  });
 
-    // Remove from allDecks
-    allDecks = allDecks.filter(d => d.id !== deckId);
+  if (!confirmed) return;
 
-    // Remove from localStorage
-    const customDecks = allDecks.filter(d => d.id.startsWith('custom_'));
-    localStorage.setItem('anonga_custom_decks', JSON.stringify(customDecks));
+  try {
+    const nextDecks = allDecks.filter((item) => item.id !== deckId);
 
-    // Remove theme
-    const themeMap = JSON.parse(localStorage.getItem('anonga_deck_themes') || '{}');
-    delete themeMap[deckId];
-    localStorage.setItem('anonga_deck_themes', JSON.stringify(themeMap));
+    // Write storage before mutating the UI so a failed write cannot look like
+    // a successful deletion.
+    const okCustom = writeJson(CUSTOM_DECKS_KEY, customDecksFrom(nextDecks));
+    const okImported = writeJson(
+      IMPORTED_DECKS_KEY,
+      readJsonArray(IMPORTED_DECKS_KEY).filter((item) => item && item.id !== deckId),
+    );
 
-    // If currently playing this deck, go back
+    const themeMap = readJson(DECK_THEMES_KEY, {});
+    if (themeMap && typeof themeMap === 'object' && !Array.isArray(themeMap)) {
+      delete themeMap[deckId];
+    }
+    const okThemes = writeJson(DECK_THEMES_KEY, themeMap && typeof themeMap === 'object' ? themeMap : {});
+
+    const overrides = readJson(DECK_OVERRIDES_KEY, {});
+    if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
+      delete overrides[deckId];
+    }
+    const okOverrides = writeJson(DECK_OVERRIDES_KEY, overrides && typeof overrides === 'object' ? overrides : {});
+
+    let okHandmade = true;
+    if (deck.isHandmade || deck.id === 'handmade') {
+      okHandmade = writeJson(HANDMADE_KEY, []);
+    }
+
+    if (!okCustom || !okImported || !okThemes || !okOverrides || !okHandmade) {
+      notifySaveFailure();
+      return;
+    }
+
+    allDecks = nextDecks;
+
     if (currentDeck && currentDeck.id === deckId) {
+      currentDeck = null;
       goBack();
     }
 
     closeModals();
     renderCollectionsTab();
     renderDecksList();
-  }).catch((error) => {
+    showToast(`Deleted "${deck.name}".`, 'success');
+  } catch (error) {
     console.error('Delete failed:', error);
-    showAlertModal({ title: 'Delete Failed', message: 'Failed to delete deck. Please try again.', type: 'error' });
-  });
+    showAlertModal({ title: 'Delete Failed', message: 'Failed to delete the collection. Please try again.', type: 'error' });
+  }
 }
 
 function renderCollectionsTab() {
   const customDecksList = document.getElementById('customDecksList');
-  const customDecks = allDecks.filter(d => !d.isDefault);
+  if (!customDecksList) return;
 
-  const html = customDecks.map(deck => `
-    <div class="collection-card" data-deck-id="${deck.id}">
+  const customDecks = allDecks.filter((deck) => !deck.isDefault && !deck.isHandmade);
+
+  const html = customDecks.map((deck) => {
+    const count = Number.isFinite(deck.count) ? deck.count : (Array.isArray(deck.questions) ? deck.questions.length : 0);
+    return `
+    <div class="collection-card" data-deck-id="${escapeHtml(deck.id)}" role="button" tabindex="0" aria-label="Open ${escapeHtml(deck.name)}, ${questionCountLabel(count)}">
       <div class="card-icon icon-wrapper" data-icon="pencil"></div>
       <div class="card-text">
-        <div class="card-title">${deck.name}</div>
-        <div class="card-subtitle">${deck.count || 0} questions</div>
+        <div class="card-title">${escapeHtml(deck.name)}</div>
+        <div class="card-subtitle">${questionCountLabel(count)}</div>
       </div>
-      ${!deck.isDefault ? `<button class="collection-delete-btn" data-delete-id="${deck.id}" type="button" aria-label="Delete ${deck.name}"><span class="icon-wrapper" data-icon="trash"></span></button>` : ''}
+      <button class="collection-delete-btn" data-delete-id="${escapeHtml(deck.id)}" type="button" aria-label="Delete ${escapeHtml(deck.name)}"><span class="icon-wrapper" data-icon="trash"></span></button>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   customDecksList.innerHTML = html || '<p style="grid-column: 1/-1; text-align: center; color: #999; padding: 40px;">No custom collections yet. Create one to get started!</p>';
   renderAllIcons();
 
-  // Attach click listeners directly to delete buttons
-  customDecksList.querySelectorAll('.collection-delete-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      const deckId = btn.dataset.deleteId;
-      if (deckId) deleteDeck(deckId);
+  customDecksList.querySelectorAll('.collection-delete-btn').forEach((btn) => {
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      const id = btn.dataset.deleteId;
+      if (id) deleteDeck(id);
     });
   });
 
-  // Attach click listeners to collection cards
-  customDecksList.querySelectorAll('.collection-card').forEach(card => {
-    card.addEventListener('click', (e) => {
-      // Don't trigger if clicking delete button
-      if (e.target.closest('.collection-delete-btn')) return;
-      const deckId = card.dataset.deckId;
-      if (deckId) window.viewDeckDetails(deckId);
+  customDecksList.querySelectorAll('.collection-card').forEach((card) => {
+    const openCard = () => {
+      const id = card.dataset.deckId;
+      if (id) window.viewDeckDetails(id);
+    };
+
+    card.addEventListener('click', (event) => {
+      if (event.target.closest('.collection-delete-btn')) return;
+      openCard();
+    });
+
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openCard();
+      }
     });
   });
 }
+
 
 function toggleLanguageHome() {
   currentLanguage = currentLanguage === 'en' ? 'tl' : 'en';
@@ -648,35 +967,51 @@ function renderDecksList() {
     return;
   }
 
-  let visibleDecks = allDecks.filter(d => d.isDefault || !d.isDefault);
+  // The ephemeral Handmade deck belongs only to its dedicated card.
+  let visibleDecks = allDecks.filter((deck) => !deck.isHandmade && deck.id !== 'handmade');
   if (currentCollection !== 'all') {
-    visibleDecks = visibleDecks.filter(d => d.collection === currentCollection);
+    visibleDecks = visibleDecks.filter((deck) => deck.collection === currentCollection);
   }
-
-  console.log('Rendering decks:', visibleDecks.length);
 
   const html = visibleDecks.map((deck, idx) => {
     const theme = getTheme(getDeckTheme(deck));
+    const count = Array.isArray(deck.questions) ? deck.questions.length : (deck.count || 0);
+    const custom = !deck.isDefault;
+    // User-created decks show the color they picked. Inline `background` wins
+    // over the themed stylesheet gradient, which used to hide the choice.
+    const color = safeColor(deck.color);
+    const style = custom
+      ? `background: linear-gradient(150deg, ${color}, ${darkenColor(color, 18)});`
+      : '';
     return `
-    <div class="deck-card" data-theme="${theme.id}" onclick="window.deckCardClick('${deck.id}')" style="background-color: ${deck.color};">
+    <div class="deck-card" data-theme="${theme.id}" data-deck-id="${escapeHtml(deck.id)}" role="button" tabindex="0" aria-label="Open ${escapeHtml(deck.name)}" style="${style}">
       <div class="deck-header">
         <div class="deck-number">KUMUSTAHAN ${String(idx + 1).padStart(2, '0')}</div>
-        <div class="deck-count-badge">${deck.count || 0} questions</div>
+        <div class="deck-count-badge">${questionCountLabel(count)}</div>
       </div>
-      <div class="deck-title-main">${deck.name}</div>
-      <div class="deck-description">${deck.description}</div>
-      <div class="deck-theme-tag">${theme.label}</div>
+      <div class="deck-title-main">${escapeHtml(deck.name)}</div>
+      <div class="deck-description">${escapeHtml(deck.description)}</div>
+      <div class="deck-theme-tag">${escapeHtml(theme.label)}</div>
     </div>
   `;
   }).join('');
 
   list.innerHTML = html;
-}
 
-window.deckCardClick = function(deckId) {
-  const deck = allDecks.find(d => d.id === deckId);
-  if (deck) startDeckSession(deck);
-};
+  list.querySelectorAll('.deck-card').forEach((card) => {
+    const open = () => {
+      const deck = allDecks.find((item) => item.id === card.dataset.deckId);
+      if (deck) startDeckSession(deck);
+    };
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        open();
+      }
+    });
+  });
+}
 
 window.viewDeckDetails = function(deckId) {
   const deck = allDecks.find(d => d.id === deckId);
@@ -684,7 +1019,7 @@ window.viewDeckDetails = function(deckId) {
     // Show info modal with delete option
     document.getElementById('infoDeckName').textContent = deck.name;
     document.getElementById('infoDeckDescription').textContent = deck.description;
-    document.getElementById('infoDeckCount').textContent = `${deck.count || 0} questions in this deck`;
+    document.getElementById('infoDeckCount').textContent = `${questionCountLabel(deck.count || 0)} in this deck`;
     document.getElementById('deckInfoModal').classList.remove('hidden');
 
     const addQuestionsBtn = document.getElementById('addQuestionsToDeckBtn');
@@ -697,21 +1032,12 @@ window.viewDeckDetails = function(deckId) {
 
     const deleteDeckBtn = document.getElementById('deleteDeckBtn');
     if (deleteDeckBtn) {
-      if (deck.isDefault) {
+      if (deck.isDefault || deck.isHandmade || deck.id === 'handmade') {
         deleteDeckBtn.style.display = 'none';
       } else {
         deleteDeckBtn.style.display = '';
         deleteDeckBtn.onclick = () => deleteDeck(deck.id);
       }
-    }
-
-    // Also wire up play from modal
-    const playBtn = document.getElementById('playDeckFromInfoBtn');
-    if (playBtn) {
-      playBtn.onclick = () => {
-        closeModals();
-        startDeckSession(deck);
-      };
     }
   }
 };
@@ -726,8 +1052,8 @@ function openFavoritesView() {
     } else {
       favsList.innerHTML = favorites.map(fav => `
         <div class="favorite-item">
-          <div class="favorite-item-text">${fav.en}</div>
-          <div class="favorite-item-lang">— ${fav.tl}</div>
+          <div class="favorite-item-text">${escapeHtml(fav.en)}</div>
+          <div class="favorite-item-lang">— ${escapeHtml(fav.tl)}</div>
         </div>
       `).join('');
     }
@@ -747,16 +1073,17 @@ function openHandmadeView() {
       description: 'Questions you wrote',
       collection: 'handmade',
       questions: [],
+      count: 0,
+      color: DEFAULT_DECK_COLOR,
       isHandmade: true,
     };
     allDecks.push(handmadeDeck);
   }
 
   // Load handmade questions from localStorage
-  const handmadeQuestions = localStorage.getItem('anonga_handmade_questions');
-  if (handmadeQuestions) {
-    handmadeDeck.questions = JSON.parse(handmadeQuestions);
-  }
+  handmadeDeck.questions = readJsonArray(HANDMADE_KEY);
+  ensureQuestionIdsForDeck(handmadeDeck);
+  handmadeDeck.count = handmadeDeck.questions.length;
 
   // Set as current and show play screen
   startDeckSession(handmadeDeck);
@@ -928,10 +1255,10 @@ function toggleFavorite() {
   if (!question) return;
 
   const isFavorited = getFavorites().some((fav) => fav && fav.id === question.id);
-  if (isFavorited) {
-    removeFavorite(question.id);
-  } else {
-    addFavorite(question);
+  const ok = isFavorited ? removeFavorite(question.id) : addFavorite(question);
+  if (!ok) {
+    showToast('Could not update favorites. Storage is full or unavailable.', 'error');
+    return;
   }
 
   updateFavoriteButtonState();
@@ -1340,21 +1667,26 @@ function applyPreviewTheme(themeId) {
   document.body.appendChild(tempEl);
   const computed = getComputedStyle(tempEl);
 
-  // Apply all --c-* variables to the preview card
+  // Apply all --c-* variables to the preview card. Copy every used variable
+  // before the temporary element is removed.
   const props = ['--c-bg1', '--c-bg2', '--c-ink', '--c-muted', '--c-accent', '--c-accent-soft',
     '--c-btn1', '--c-btn2', '--c-line', '--c-shadow', '--c-back1', '--c-back2',
-    '--c-back-ink', '--c-back-muted', '--c-back-glow', '--c-header', '--c-ornament', '--c-pattern', '--c-pattern-size'];
+    '--c-back-ink', '--c-back-muted', '--c-back-glow', '--c-header', '--c-ornament',
+    '--c-pattern', '--c-pattern-size', '--c-font', '--c-on-accent'];
+  const values = {};
   for (const prop of props) {
     const val = computed.getPropertyValue(prop).trim();
-    if (val) previewCard.style.setProperty(prop, val);
+    if (val) values[prop] = val;
   }
   tempEl.remove();
+
+  Object.keys(values).forEach((prop) => previewCard.style.setProperty(prop, values[prop]));
 
   // Also update the play screen preview text color
   const front = document.getElementById('themePreviewFront');
   const back = document.getElementById('themePreviewBack');
-  if (front) front.style.color = computed.getPropertyValue('--c-ink').trim();
-  if (back) back.style.color = computed.getPropertyValue('--c-back-ink').trim();
+  if (front && values['--c-ink']) front.style.color = values['--c-ink'];
+  if (back && values['--c-back-ink']) back.style.color = values['--c-back-ink'];
 }
 
 function openThemeModal() {
@@ -1368,8 +1700,11 @@ function openThemeModal() {
   if (applyBtn) {
     applyBtn.onclick = () => {
       if (!currentDeck || !pendingThemeId) return;
+      if (!saveDeckTheme(currentDeck.id, pendingThemeId)) {
+        showAlertModal({ title: 'Could Not Save', message: 'The theme could not be saved to device storage.', type: 'error' });
+        return;
+      }
       currentDeck.theme = pendingThemeId;
-      saveDeckTheme(currentDeck.id, pendingThemeId);
       applyDeckTheme(currentDeck);
       renderDecksList();
       closeModals();
@@ -1401,167 +1736,20 @@ function openCreateDeckModal() {
     console.error('Modal not found');
     return;
   }
+
+  // Clear every transient piece of state first so a cancelled import can never
+  // leak into the next collection.
+  resetCreationFlow();
   modal.classList.remove('hidden');
-
-  // Reset to CSV import step (color selection is now the final step)
-  document.getElementById('colorSelectStep').classList.remove('active');
-  document.getElementById('csvImportStep').classList.add('active');
-  document.getElementById('manualAddStep').classList.remove('active');
-  document.getElementById('deckDetailsStep').classList.remove('active');
-
-  // Reset all form inputs
-  document.querySelectorAll('input[name="selectedColor"]').forEach(r => r.checked = false);
-  selectedDeckColor = '#c9846f';
-
-  // Category pill group (replaces dropdown - more reliable on Android)
-  function setupCategoryPills(groupId, hiddenId) {
-    const group = document.getElementById(groupId);
-    const hidden = document.getElementById(hiddenId);
-    if (!group || !hidden) return;
-
-    // Prevent duplicate listeners
-    if (group.dataset.initialized === 'true') return;
-    group.dataset.initialized = 'true';
-
-    group.querySelectorAll('.category-pill').forEach(pill => {
-      pill.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const value = pill.dataset.value;
-        hidden.value = value;
-        group.querySelectorAll('.category-pill').forEach(p => {
-          p.classList.toggle('selected', p.dataset.value === value);
-        });
-      });
-    });
-  }
-
-  setupCategoryPills('deckCategoryGroup', 'deckCategory');
-  setupCategoryPills('newDeckCollectionGroup', 'newDeckCollection');
-
-  // Reset category on modal open
-  const csvHidden = document.getElementById('deckCategory');
-  if (csvHidden) csvHidden.value = '';
-  const csvGroup = document.getElementById('deckCategoryGroup');
-  if (csvGroup) {
-    csvGroup.querySelectorAll('.category-pill').forEach(p => p.classList.remove('selected'));
-  }
-
-  const manualHidden = document.getElementById('newDeckCollection');
-  if (manualHidden) manualHidden.value = '';
-  const manualGroup = document.getElementById('newDeckCollectionGroup');
-  if (manualGroup) {
-    manualGroup.querySelectorAll('.category-pill').forEach(p => p.classList.remove('selected'));
-  }
-
-  // Set default color
-  const defaultColorInput = document.getElementById('color1');
-  if (defaultColorInput) {
-    defaultColorInput.checked = true;
-    updateColorPreview('#c9846f');
-  }
-
-  // Live preview on color change
-  document.querySelectorAll('input[name="selectedColor"]').forEach(radio => {
-    radio.addEventListener('change', () => {
-      if (radio.checked) {
-        selectedDeckColor = radio.value;
-        updateColorPreview(radio.value);
-      }
-    });
-  });
-
-  // Attach Back button on color step
-  const colorBackBtn = document.getElementById('colorBackBtn');
-  if (colorBackBtn) {
-    colorBackBtn.onclick = () => {
-      document.getElementById('colorSelectStep').classList.remove('active');
-      document.getElementById('deckDetailsStep').classList.add('active');
-    };
-  }
-
-  // Attach Create Collection button on color step
-  const colorCreateBtn = document.getElementById('colorCreateBtn');
-  if (colorCreateBtn) {
-    colorCreateBtn.onclick = () => {
-      const selected = document.querySelector('input[name="selectedColor"]:checked');
-      if (!selected) {
-        showAlertModal({ title: 'Missing Selection', message: 'Please select a color.', type: 'warning' });
-        return;
-      }
-      selectedDeckColor = selected.value;
-
-      // Now create the deck using pendingDeckDetails
-      if (!pendingDeckDetails) {
-        showAlertModal({ title: 'Error', message: 'Missing deck details. Please start over.', type: 'error' });
-        return;
-      }
-
-      const { name, description, category } = pendingDeckDetails;
-      const deckId = `custom_${Date.now()}`;
-      const questions = (window_importedQuestions || []).map((question, index) => ({
-        ...question,
-        id: `${deckId}_q${index}`,
-      }));
-
-      const newDeck = {
-        id: deckId,
-        name: name,
-        description: description,
-        collection: category,
-        count: questions.length,
-        questions,
-        color: selectedDeckColor,
-        theme: themeForCollection(category),
-        isCustom: true
-      };
-
-      allDecks.push(newDeck);
-
-      const customDecks = allDecks.filter(d => d.id.startsWith('custom_'));
-      localStorage.setItem('anonga_custom_decks', JSON.stringify(customDecks));
-
-      document.getElementById('createDeckForm').reset();
-      closeModals();
-
-      showToast(`Created collection: "${name}" with ${newDeck.count} questions`, 'success');
-      renderDecksList();
-      renderCollectionsTab();
-
-      // Reset pending details
-      pendingDeckDetails = null;
-      window_importedQuestions = [];
-    };
-  }
-
-  // Attach form listeners
-  const csvForm = document.getElementById('csvImportForm');
-  if (csvForm) {
-    csvForm.onsubmit = handleCsvImport;
-  }
-
-  const manualBtn = document.getElementById('manualImportBtn');
-  if (manualBtn) {
-    manualBtn.onclick = switchToManualAdd;
-  }
-
-  const deckDetailsForm = document.getElementById('deckDetailsForm');
-  if (deckDetailsForm) {
-    deckDetailsForm.onsubmit = handleDeckDetails;
-  }
-
-  const createForm = document.getElementById('createDeckForm');
-  if (createForm) {
-    createForm.onsubmit = handleCreateDeck;
-  }
 }
 
 function updateColorPreview(color) {
   const previewCard = document.getElementById('colorPreviewCard');
   if (!previewCard) return;
 
+  const safe = safeColor(color);
   // Set background gradient
-  previewCard.style.background = `linear-gradient(135deg, ${color} 0%, ${darkenColor(color, 15)} 100%)`;
+  previewCard.style.background = `linear-gradient(135deg, ${safe} 0%, ${darkenColor(safe, 15)} 100%)`;
 }
 
 function darkenColor(hex, percent) {
@@ -1577,23 +1765,17 @@ function darkenColor(hex, percent) {
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
-function openImportStep() {
-  openCreateDeckModal();
-  const firstColor = document.getElementById('color1');
-  if (firstColor) firstColor.checked = true;
-  selectedDeckColor = '#c9846f';
-  updateColorPreview('#c9846f');
-  document.getElementById('colorSelectStep').classList.remove('active');
-  document.getElementById('csvImportStep').classList.add('active');
-}
-
-
 function closeModals() {
-  document.getElementById('favoritesModal').classList.add('hidden');
-  document.getElementById('deckInfoModal').classList.add('hidden');
-  document.getElementById('themeModal').classList.add('hidden');
-  document.getElementById('createDeckModal').classList.add('hidden');
-  document.getElementById('addQuestionsModal').classList.add('hidden');
+  const createModal = document.getElementById('createDeckModal');
+  const creationWasOpen = Boolean(createModal && !createModal.classList.contains('hidden'));
+
+  ['favoritesModal', 'deckInfoModal', 'themeModal', 'createDeckModal', 'addQuestionsModal'].forEach((id) => {
+    const modal = document.getElementById(id);
+    if (modal) modal.classList.add('hidden');
+  });
+
+  // Cancel means cancel: drop partial questions/details/file selection.
+  if (creationWasOpen) resetCreationFlow();
 }
 
 function handleCreateDeck(e) {
@@ -1608,6 +1790,11 @@ function handleCreateDeck(e) {
     return;
   }
 
+  if (!collection) {
+    showAlertModal({ title: 'Choose a Category', message: 'Please select a category for this collection.', type: 'warning' });
+    return;
+  }
+
   // Check for duplicate deck name
   const existingDeck = allDecks.find(d => d.name.toLowerCase().trim() === name.toLowerCase().trim());
   if (existingDeck) {
@@ -1616,190 +1803,23 @@ function handleCreateDeck(e) {
   }
 
   // Store details temporarily - color selection is the final step
-  pendingDeckDetails = { name, description, collection };
+  pendingDeckDetails = { name, description, category: collection };
+  colorStepOrigin = 'manualAddStep';
+
+  // Nothing is written to storage until Create Collection is pressed.
+  window_importedQuestions = [];
 
   // Go to color selection step (final step)
-  document.getElementById('manualAddStep').classList.remove('active');
-  document.getElementById('colorSelectStep').classList.add('active');
-
-  // Update preview with the entered name
-  const previewTitle = document.querySelector('.color-preview-title');
-  if (previewTitle) previewTitle.textContent = name;
+  showCreationStep('colorSelectStep');
+  updateColorPreviewMeta();
 
   // Reset color selection
   document.querySelectorAll('input[name="selectedColor"]').forEach(r => r.checked = false);
   const defaultColor = document.getElementById('color1');
   if (defaultColor) {
     defaultColor.checked = true;
-    selectedDeckColor = defaultColor.value;
+    selectedDeckColor = safeColor(defaultColor.value);
     updateColorPreview(selectedDeckColor);
-  }
-  return;
-}
-
-// Scan for CSV files on the device (Android/iOS)
-async function scanForCsvFiles() {
-  const csvFiles = [];
-  
-  if (!CapacitorFilesystem) {
-    console.log('Filesystem plugin not available, falling back to file picker');
-    return csvFiles;
-  }
-  
-  // Request permissions first
-  try {
-    const permStatus = await CapacitorFilesystem.requestPermissions();
-    console.log('Permission status:', JSON.stringify(permStatus));
-    if (permStatus && permStatus.publicStorage === 'denied') {
-      showAlertModal({ title: 'Permission Required', message: 'Storage permission is needed to scan for files. Please grant permission in settings.', type: 'warning' });
-      return csvFiles;
-    }
-  } catch (e) {
-    console.log('Permission request failed:', e);
-  }
-  
-  try {
-    // Try Documents directory first
-    const docsResult = await CapacitorFilesystem.readdir({
-      path: '',
-      directory: 'DOCUMENTS'
-    });
-    
-    if (docsResult && docsResult.files) {
-      for (const file of docsResult.files) {
-        if (file.type === 'file') {
-          csvFiles.push({ name: file.name, path: file.name, directory: 'DOCUMENTS' });
-        }
-      }
-    }
-  } catch (e) {
-    console.log('Could not read Documents directory:', e.message || e);
-  }
-  
-  try {
-    // Try ExternalStorage directory (Android 10 and below)
-    const extResult = await CapacitorFilesystem.readdir({
-      path: '',
-      directory: 'EXTERNAL_STORAGE'
-    });
-    
-    if (extResult && extResult.files) {
-      for (const file of extResult.files) {
-        if (file.type === 'file') {
-          csvFiles.push({ name: file.name, path: file.name, directory: 'EXTERNAL_STORAGE' });
-        }
-        // Also check Downloads folder
-        if (file.type === 'directory' && (file.name === 'Download' || file.name === 'Downloads')) {
-          try {
-            const dlResult = await CapacitorFilesystem.readdir({
-              path: file.name,
-              directory: 'EXTERNAL_STORAGE'
-            });
-            if (dlResult && dlResult.files) {
-              for (const dlFile of dlResult.files) {
-                if (dlFile.type === 'file') {
-                  csvFiles.push({ name: dlFile.name, path: file.name + '/' + dlFile.name, directory: 'EXTERNAL_STORAGE' });
-                }
-              }
-            }
-          } catch (e) {
-            console.log('Could not read Downloads folder:', e.message || e);
-          }
-        }
-      }
-    }
-  } catch (e) {
-    console.log('Could not read ExternalStorage directory:', e.message || e);
-  }
-  
-  console.log('Found', csvFiles.length, 'files');
-  return csvFiles;
-}
-
-// Show a modal with found CSV files
-async function showCsvFilePicker() {
-  const csvFiles = await scanForCsvFiles();
-  
-  if (csvFiles.length === 0) {
-    showConfirmModal({
-      title: 'No Files Found',
-      description: 'No files found in Documents or Downloads folders.',
-      warning: 'Would you like to browse for a file instead?',
-      confirmText: 'Browse Files',
-      cancelText: 'Cancel',
-      isDanger: false
-    }).then((confirmed) => {
-      if (confirmed) {
-        const fileInput = document.getElementById('csvFile');
-        if (fileInput) fileInput.click();
-      }
-    });
-    return;
-  }
-  
-  // Show modal with found files
-  let modal = document.getElementById('csvScanModal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'csvScanModal';
-    modal.className = 'modal';
-    modal.innerHTML = `
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2>Found ${csvFiles.length} File${csvFiles.length > 1 ? 's' : ''}</h2>
-          <button class="modal-close" onclick="document.getElementById('csvScanModal').classList.add('hidden')">&times;</button>
-        </div>
-        <div id="csvScanList" style="max-height: 300px; overflow-y: auto;"></div>
-        <div style="margin-top: 16px; display: flex; gap: 8px;">
-          <button class="btn btn-secondary" onclick="document.getElementById('csvFile').click(); document.getElementById('csvScanModal').classList.add('hidden');">Browse Files</button>
-          <button class="btn btn-ghost" onclick="document.getElementById('csvScanModal').classList.add('hidden')">Cancel</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-  }
-  
-  const list = document.getElementById('csvScanList');
-  if (list) {
-    list.innerHTML = csvFiles.map(f => `
-      <div class="csv-scan-item" onclick="loadCsvFromDevice('${f.directory}', '${f.path}')" style="padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 20px;">📄</span>
-        <span>${f.name}</span>
-      </div>
-    `).join('');
-  }
-  
-  modal.classList.remove('hidden');
-}
-
-// Load a CSV file from the device filesystem
-async function loadCsvFromDevice(directory, path) {
-  if (!CapacitorFilesystem) return;
-  
-  try {
-    const result = await CapacitorFilesystem.readFile({
-      path: path,
-      directory: directory,
-      encoding: 'utf8'
-    });
-    
-    const rows = parseCsv(result.data);
-    if (rows.length < 2) {
-      showAlertModal({ title: 'Invalid CSV', message: 'CSV file must have a header row and at least one question.', type: 'error' });
-      return;
-    }
-    
-    const questions = csvRowsToQuestions(rows);
-    if (questions.length === 0) {
-      showAlertModal({ title: 'No Questions Found', message: 'No valid questions found in CSV.', type: 'warning' });
-      return;
-    }
-    
-    window_importedQuestions = questions;
-    document.getElementById('csvScanModal').classList.add('hidden');
-    showDeckDetailsStep(questions.length);
-  } catch (e) {
-    showAlertModal({ title: 'Import Error', message: 'Error reading CSV file: ' + e.message, type: 'error' });
   }
 }
 
@@ -1834,6 +1854,7 @@ function handleCsvImport(e) {
 
       // Show deck details step
       showDeckDetailsStep(questions.length);
+      showToast(`Imported ${questions.length} ${questions.length === 1 ? 'question' : 'questions'}.`, 'success');
 
     } catch (error) {
       showAlertModal({ title: 'Parse Error', message: 'Error parsing CSV: ' + error.message, type: 'error' });
@@ -1955,14 +1976,20 @@ function csvRowsToQuestions(rows) {
 }
 
 function showDeckDetailsStep(questionCount) {
-  document.getElementById('csvImportStep').classList.remove('active');
-  document.getElementById('deckDetailsStep').classList.add('active');
+  showCreationStep('deckDetailsStep');
 
   // Remove any existing import info message
   const detailsForm = document.getElementById('deckDetailsForm');
   if (detailsForm) {
     const existingInfo = detailsForm.querySelector('.import-info-msg');
     if (existingInfo) existingInfo.remove();
+
+    if (Number.isFinite(questionCount)) {
+      const info = document.createElement('div');
+      info.className = 'import-info-msg';
+      info.textContent = `${questionCount} ${questionCount === 1 ? 'question' : 'questions'} ready to import.`;
+      detailsForm.prepend(info);
+    }
   }
 }
 
@@ -1973,74 +2000,145 @@ function handleDeckDetails(e) {
   const description = document.getElementById('deckDescription').value.trim();
   const category = document.getElementById('deckCategory').value;
 
-  if (!name || !description || !category) {
+  if (!name || !description) {
     showAlertModal({ title: 'Missing Fields', message: 'Please fill in all fields.', type: 'warning' });
+    return;
+  }
+
+  if (!category) {
+    showAlertModal({ title: 'Choose a Category', message: 'Please select a category for this collection.', type: 'warning' });
     return;
   }
 
   // Store details temporarily - color selection is the final step
   pendingDeckDetails = { name, description, category };
+  colorStepOrigin = 'csvImportStep';
 
   // Go to color selection step (final step)
-  document.getElementById('deckDetailsStep').classList.remove('active');
-  document.getElementById('colorSelectStep').classList.add('active');
-
-  // Update preview with the entered name
-  const previewTitle = document.querySelector('.color-preview-title');
-  if (previewTitle) previewTitle.textContent = name;
+  showCreationStep('colorSelectStep');
+  updateColorPreviewMeta();
 
   // Reset color selection
   document.querySelectorAll('input[name="selectedColor"]').forEach(r => r.checked = false);
   const defaultColor = document.getElementById('color1');
   if (defaultColor) {
     defaultColor.checked = true;
-    selectedDeckColor = defaultColor.value;
+    selectedDeckColor = safeColor(defaultColor.value);
     updateColorPreview(selectedDeckColor);
   }
-  return;
+}
+
+// The one and only place a collection is written. Runs when the user presses
+// "Create Collection" on the final step.
+function createPendingCollection() {
+  if (isCreatingCollection) return;
+
+  const selected = document.querySelector('input[name="selectedColor"]:checked');
+  if (!selected) {
+    showAlertModal({ title: 'Missing Selection', message: 'Please select a color.', type: 'warning' });
+    return;
+  }
+
+  if (!pendingDeckDetails || !pendingDeckDetails.name) {
+    showAlertModal({ title: 'Missing Details', message: 'Missing collection details. Please start over.', type: 'error' });
+    return;
+  }
+
+  const { name, description, category } = pendingDeckDetails;
+  if (!category) {
+    showAlertModal({ title: 'Choose a Category', message: 'Please select a category for this collection.', type: 'warning' });
+    return;
+  }
+
+  isCreatingCollection = true;
+  try {
+    const deckId = `custom_${Date.now()}`;
+    const questions = (Array.isArray(window_importedQuestions) ? window_importedQuestions : []).map((question, index) => ({
+      ...question,
+      id: `${deckId}_q${index}`,
+    }));
+
+    const newDeck = {
+      id: deckId,
+      name,
+      description,
+      collection: category,
+      count: questions.length,
+      questions,
+      color: safeColor(selected.value),
+      theme: themeForCollection(category),
+      isCustom: true,
+    };
+
+    const nextDecks = allDecks.concat(newDeck);
+    // Persist first: only show the collection if the write actually succeeded.
+    if (!writeJson(CUSTOM_DECKS_KEY, customDecksFrom(nextDecks))) {
+      notifySaveFailure();
+      return;
+    }
+
+    allDecks = nextDecks;
+    closeModals();
+
+    showToast(`Created collection: "${name}" with ${newDeck.count} ${newDeck.count === 1 ? 'question' : 'questions'}.`, 'success');
+    renderDecksList();
+    renderCollectionsTab();
+  } finally {
+    isCreatingCollection = false;
+  }
 }
 
 function switchToManualAdd() {
-  document.getElementById('csvImportStep').classList.remove('active');
-  document.getElementById('manualAddStep').classList.add('active');
+  // Manual collections start with zero questions, never the leftovers of a
+  // cancelled or abandoned CSV import.
+  window_importedQuestions = [];
+  pendingDeckDetails = null;
+  showCreationStep('manualAddStep');
 }
 
 function switchBackToCSVStep() {
-  document.getElementById('manualAddStep').classList.remove('active');
-  document.getElementById('csvImportStep').classList.add('active');
+  pendingDeckDetails = null;
+  showCreationStep('csvImportStep');
 }
 
-window.removeQuestion = function(questionId) {
-  if (!currentDeck || !currentDeck.questions) return;
+window.removeQuestion = async function(questionId) {
+  if (!currentDeck || !Array.isArray(currentDeck.questions)) return;
 
-  showConfirmModal({
+  const confirmed = await showConfirmModal({
     title: 'Remove this question?',
     description: 'You are about to remove this question from the deck.',
     warning: 'This action cannot be undone.',
     confirmText: 'Remove',
     cancelText: 'Cancel',
-    isDanger: true
-  }).then((confirmed) => {
-    if (!confirmed) return;
-
-    currentDeck.questions = currentDeck.questions.filter(q => q.id !== questionId);
-    currentDeck.count = currentDeck.questions.length;
-
-    // Save to localStorage if it's a custom deck
-    if (currentDeck.id.startsWith('custom_')) {
-      const customDecks = allDecks.filter(d => d.id.startsWith('custom_'));
-      localStorage.setItem('anonga_custom_decks', JSON.stringify(customDecks));
-    }
-
-    // Re-render preview
-    renderQuestionsPreview();
-
-    // Update count display
-    const countEl = document.getElementById('infoDeckCount');
-    if (countEl) {
-      countEl.textContent = `${currentDeck.count || 0} questions in this deck`;
-    }
+    isDanger: true,
   });
+
+  if (!confirmed) return;
+
+  const nextQuestions = currentDeck.questions.filter((q) => q.id !== questionId);
+  const previousQuestions = currentDeck.questions;
+  currentDeck.questions = nextQuestions;
+  currentDeck.count = nextQuestions.length;
+
+  const saved = saveDeckQuestions(currentDeck);
+  if (!saved) {
+    currentDeck.questions = previousQuestions;
+    currentDeck.count = previousQuestions.length;
+    notifySaveFailure();
+    return;
+  }
+
+  refreshDeckCounts();
+  renderCollectionsTab();
+  renderDecks();
+  renderQuestionsPreview();
+
+  const countEl = document.getElementById('infoDeckCount');
+  if (countEl) {
+    countEl.textContent = `${questionCountLabel(currentDeck.count || 0)} in this deck`;
+  }
+
+  showToast('Question removed.', 'success');
 };
 
 function handleAddQuestion(e) {
@@ -2075,10 +2173,22 @@ function handleAddQuestion(e) {
   currentDeck.questions.push(question);
   currentDeck.count = currentDeck.questions.length;
 
-  // Save to localStorage if it's a custom deck
-  if (currentDeck.id.startsWith('custom_')) {
-    const customDecks = allDecks.filter(d => d.id.startsWith('custom_'));
-    localStorage.setItem('anonga_custom_decks', JSON.stringify(customDecks));
+  // Persist for custom, handmade and built-in decks alike.
+  if (!saveDeckQuestions(currentDeck)) {
+    currentDeck.questions.pop();
+    currentDeck.count = currentDeck.questions.length;
+    notifySaveFailure();
+    return;
+  }
+
+  refreshDeckCounts();
+  renderCollectionsTab();
+  renderDecks();
+
+  // Keep the info dialog's count in sync while it is open.
+  const infoCountEl = document.getElementById('infoDeckCount');
+  if (infoCountEl && currentDeck) {
+    infoCountEl.textContent = `${questionCountLabel(currentDeck.count || 0)} in this deck`;
   }
 
   // Clear form
@@ -2087,11 +2197,12 @@ function handleAddQuestion(e) {
   // Update preview
   renderQuestionsPreview();
 
-  showToast(`Question added! Total: ${currentDeck.count} questions`, 'success');
+  showToast(`Question added! Total: ${currentDeck.count} ${currentDeck.count === 1 ? 'question' : 'questions'}`, 'success');
 }
 
 function renderQuestionsPreview() {
   const preview = document.getElementById('deckQuestionsPreview');
+  if (!preview) return;
   if (!currentDeck || !currentDeck.questions || currentDeck.questions.length === 0) {
     preview.innerHTML = '<div class="questions-empty">No questions yet</div>';
     return;
@@ -2099,14 +2210,18 @@ function renderQuestionsPreview() {
 
   const html = currentDeck.questions.map((q, idx) => `
     <div class="question-item" style="margin-bottom: 12px; padding: 8px; background: #f5f5f5; border-radius: 4px; position: relative;">
-      <button class="question-remove-btn" onclick="window.removeQuestion('${q.id}')" aria-label="Remove question" style="position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%; border: none; background: rgba(184, 87, 122, 0.15); color: var(--accent-rose); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; line-height: 1;">&times;</button>
+      <button class="question-remove-btn" data-question-id="${escapeHtml(q.id)}" type="button" aria-label="Remove question" style="position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%; border: none; background: rgba(184, 87, 122, 0.15); color: var(--accent-rose); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; line-height: 1;">&times;</button>
       <div style="font-weight: 600; font-size: 12px; color: #666; margin-bottom: 4px;">${idx + 1}.</div>
-      <div style="font-size: 13px; margin-bottom: 4px; padding-right: 24px;">${q.en}</div>
-      <div style="font-size: 13px; color: #666; font-style: italic; padding-right: 24px;">${q.tl}</div>
+      <div style="font-size: 13px; margin-bottom: 4px; padding-right: 24px;">${escapeHtml(q.en)}</div>
+      <div style="font-size: 13px; color: #666; font-style: italic; padding-right: 24px;">${escapeHtml(q.tl)}</div>
     </div>
   `).join('');
 
   preview.innerHTML = html;
+
+  preview.querySelectorAll('.question-remove-btn').forEach((btn) => {
+    btn.addEventListener('click', () => window.removeQuestion(btn.dataset.questionId));
+  });
 }
 
 function openAddQuestionsModal() {
@@ -2123,8 +2238,6 @@ function openAddQuestionsModal() {
 
   // Show current questions
   renderQuestionsPreview();
-
-  attachModalListeners();
 }
 
 
@@ -2152,7 +2265,7 @@ function setupPlayScreenListeners() {
     if (!currentDeck) return;
     document.getElementById('infoDeckName').textContent = currentDeck.name;
     document.getElementById('infoDeckDescription').textContent = currentDeck.description;
-    document.getElementById('infoDeckCount').textContent = `${currentDeck.count || 0} questions in this deck`;
+    document.getElementById('infoDeckCount').textContent = `${questionCountLabel(currentDeck.count || 0)} in this deck`;
     document.getElementById('deckInfoModal').classList.remove('hidden');
 
     // Wire up the Add Questions button
@@ -2164,7 +2277,7 @@ function setupPlayScreenListeners() {
     // Wire up the Delete Deck button
     const deleteDeckBtn = document.getElementById('deleteDeckBtn');
     if (deleteDeckBtn) {
-      if (currentDeck.isDefault) {
+      if (currentDeck.isDefault || currentDeck.isHandmade || currentDeck.id === 'handmade') {
         deleteDeckBtn.style.display = 'none';
       } else {
         deleteDeckBtn.style.display = '';

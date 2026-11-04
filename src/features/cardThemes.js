@@ -40,7 +40,7 @@ export const THEME_LIST = [
   // --- Six complementary themes ---
   {
     id: 'ocean',
-    label: 'Ocean',
+    label: 'Praisel',
     swatch: 'linear-gradient(135deg, #f0f7fa 0%, #b8dce8 55%, #3a7ca5 100%)',
   },
   {
@@ -114,6 +114,18 @@ const COLOR_THEMES = {
   '#8b6f47': 'minimal',
   '#c8957d': 'pastel',
   '#6b4c5a': 'dark',
+  // The remaining palette swatches used to fall back to the collection theme,
+  // so e.g. a blue collection played with a pink card. Map every swatch to the
+  // existing theme built from that colour.
+  '#7b2d3f': 'classic-maroon',
+  '#6b1f3a': 'wine-burgundy',
+  '#8b4a52': 'dusty-rosewood',
+  '#c75b6e': 'dark-cherry',
+  '#3a7ca5': 'ocean',
+  '#c75b3e': 'sunset',
+  '#8b6fa8': 'lavender',
+  '#9b4d6e': 'berry',
+  '#b8860b': 'citrus',
 };
 
 const STORAGE_KEY = 'anonga_deck_themes';
@@ -142,27 +154,37 @@ export function getStoredDeckTheme(deckId) {
 }
 
 export function saveDeckTheme(deckId, themeId) {
-  if (!deckId || !isValidTheme(themeId)) return;
+  if (!deckId || !isValidTheme(themeId)) return false;
   const map = readThemeMap();
   map[deckId] = themeId;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+    return true;
   } catch (error) {
     console.warn('Could not save deck theme:', error);
+    return false;
   }
 }
 
 export function getDeckTheme(deck) {
   if (!deck) return DEFAULT_THEME;
 
-  if (deck.theme && isValidTheme(deck.theme)) return deck.theme;
-
+  // An explicit choice saved by the theme picker always wins. The deck record's
+  // creation-time `theme` must not override it (that made themes revert).
   const stored = getStoredDeckTheme(deck.id);
   if (stored && isValidTheme(stored)) return stored;
 
+  const byColor = COLOR_THEMES[String(deck.color || '').toLowerCase()];
+
+  // For user-created collections the colour chosen in the wizard is the card
+  // identity. The legacy creation-time `theme` used to win here, so a blue
+  // collection played with a pink card. Built-in decks keep their fixed themes.
+  if (!deck.isDefault && !deck.isHandmade && byColor) return byColor;
+
+  if (deck.theme && isValidTheme(deck.theme)) return deck.theme;
+
   if (DECK_THEMES[deck.id]) return DECK_THEMES[deck.id];
 
-  const byColor = COLOR_THEMES[String(deck.color || '').toLowerCase()];
   if (byColor) return byColor;
 
   return themeForCollection(deck.collection);

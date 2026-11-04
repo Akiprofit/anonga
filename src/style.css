@@ -110,6 +110,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
   background-color: var(--background);
   position: relative;
@@ -3199,4 +3200,81 @@ body {
   border-color: var(--text-dark);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   transform: scale(0.95);
+}
+
+/* ============================================================================
+   AUDIT FIXES: short screens, safe areas, touch targets
+   ============================================================================ */
+
+/* Keep the color preview and actions on screen; only the swatches scroll. */
+#colorSelectStep .color-preview-sticky,
+#colorSelectStep .step-title,
+#colorSelectStep .step-description {
+  flex: 0 0 auto;
+}
+
+#colorSelectStep .color-options-scroll {
+  flex: 1 1 auto;
+  min-height: 90px;
+  max-height: min(250px, 32dvh);
+}
+
+#colorSelectStep .color-step-actions {
+  display: flex;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+#colorSelectStep .color-preview-card {
+  max-width: min(160px, 24dvh);
+}
+
+/* The narrow miniature cannot fit the deck number and question count on one
+   line, so stack the header instead of clipping both labels. */
+#colorSelectStep .color-preview-header {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+#colorSelectStep .color-preview-count {
+  align-self: flex-end;
+}
+
+/* When the Android keyboard shrinks the viewport, the details step is taller
+   than the modal. Let the step scroll so Category and Continue stay reachable
+   instead of being clipped under the keyboard. */
+#manualAddStep,
+#deckDetailsStep {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* Back + Continue rows on the detail steps */
+.step-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.step-actions .btn {
+  flex: 1;
+}
+
+/* Larger, easier close targets (44x44 minimum). */
+.modal-close {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+}
+
+/* Respect Android gesture navigation / notches. */
+.modal-content {
+  max-height: 90vh;
+  max-height: 90dvh;
+  padding-bottom: calc(var(--spacing-lg) + env(safe-area-inset-bottom, 0px));
+}
+
+.play-main {
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
 }

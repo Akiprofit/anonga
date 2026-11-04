@@ -12,7 +12,7 @@
   <a href="https://github.com/Akiprofit/anonga/releases/latest">
     <img alt="Download the Android APK" src="https://img.shields.io/badge/Download-Android%20APK-163D3A?style=for-the-badge&logo=android&logoColor=white" />
   </a>
-  <img alt="Version 1.0" src="https://img.shields.io/badge/version-1.0-C9846F?style=for-the-badge" />
+  <img alt="Version 1.1" src="https://img.shields.io/badge/version-1.1-C9846F?style=for-the-badge" />
   <img alt="Offline first" src="https://img.shields.io/badge/offline-first-5A7A5C?style=for-the-badge" />
 </p>
 
@@ -37,7 +37,7 @@ The latest signed Android APK is on the
 
 ### Install on Android
 
-1. Download `AnoNga-1.0.apk` from the latest release.
+1. Download `AnoNga-1.1.apk` from the latest release.
 2. Open the downloaded APK.
 3. Allow **Install unknown apps** for the browser or file manager you used.
 4. Tap **Install**.
@@ -235,8 +235,10 @@ android/app/build/outputs/apk/release/app-release.apk
 
 ## Status
 
-**v1.0** — Android release build available. The app is local-first and does not
-require an internet connection for normal use.
+**v1.1** — Audit and bug-fix release. The app is local-first and does not
+require an internet connection for normal use. See
+[`AUDIT_REPORT.md`](AUDIT_REPORT.md) for the confirmed issues, fixes, browser
+test results, and the remaining on-device checks.
 
 Built with care for slow evenings, long drives, and conversations that deserve
 better questions.

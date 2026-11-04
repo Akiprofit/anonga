@@ -6,9 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>AnoNga</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Fonts are bundled locally via @fontsource so the app works fully offline. -->
   <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
@@ -226,7 +224,7 @@
 
     <!-- Modals -->
     <div id="favoritesModal" class="modal hidden">
-      <div class="modal-content">
+      <div class="modal-content" role="dialog" aria-modal="true">
         <div class="modal-header">
           <h2>Favorite Questions</h2>
           <button class="modal-close" aria-label="Close"><span class="icon-wrapper" data-icon="x"></span></button>
@@ -238,7 +236,7 @@
     </div>
 
     <div id="deckInfoModal" class="modal hidden">
-      <div class="modal-content">
+      <div class="modal-content" role="dialog" aria-modal="true">
         <div class="modal-header">
           <h2 id="infoDeckName">Deck Name</h2>
           <button class="modal-close" aria-label="Close"><span class="icon-wrapper" data-icon="x"></span></button>
@@ -253,9 +251,9 @@
     </div>
 
     <div id="themeModal" class="modal hidden">
-      <div class="modal-content theme-modal-content">
+      <div class="modal-content theme-modal-content" role="dialog" aria-modal="true" aria-labelledby="themeModalTitle">
         <div class="modal-header">
-          <h2>Card theme</h2>
+          <h2 id="themeModalTitle">Card theme</h2>
           <button class="modal-close" aria-label="Close"><span class="icon-wrapper" data-icon="x"></span></button>
         </div>
         <p class="theme-intro">Change the look of this deck. Your questions and their order stay exactly the same.</p>
@@ -288,14 +286,14 @@
     </div>
 
     <div id="createDeckModal" class="modal hidden">
-      <div class="modal-content">
+      <div class="modal-content" role="dialog" aria-modal="true">
         <div class="modal-header">
           <h2>Add New Collection</h2>
           <button class="modal-close" aria-label="Close"><span class="icon-wrapper" data-icon="x"></span></button>
         </div>
 
-        <!-- Step 1: CSV Import or Manual (Primary) -->
-        <div id="colorSelectStep" class="creation-step active">
+        <!-- Final step: color selection -->
+        <div id="colorSelectStep" class="creation-step">
           <div class="step-title">Final Step: Choose Card Color</div>
           <p class="step-description">Pick a color for your collection deck.</p>
 
@@ -376,15 +374,15 @@
           </div>
         </div>
 
-        <!-- Step 2: CSV Import or Manual (Primary) -->
+        <!-- Step 1: CSV Import or Manual (Primary) -->
         <div id="csvImportStep" class="creation-step">
-          <div class="step-title">Step 2: Import Questions</div>
+          <div class="step-title">Step 1: Import Questions</div>
           <p class="step-description">Upload a CSV file with your questions. This is the quickest way to create a collection.</p>
 
-          <form id="csvImportForm" class="modal-form">
+          <form id="csvImportForm" class="modal-form" novalidate>
             <div class="form-group">
               <label for="csvFile">Select CSV File</label>
-              <input id="csvFile" class="form-input" type="file" required>
+              <input id="csvFile" class="form-input" type="file" accept=".csv,text/csv,text/plain" required>
               <div class="form-help">CSV should have columns: question_en, question_tl</div>
             </div>
             <button type="submit" class="btn btn-primary">Import Questions</button>
@@ -397,10 +395,10 @@
           </button>
         </div>
 
-        <!-- Step 3: Manual Add (Alternative) -->
+        <!-- Step 2: Manual Add (Alternative) -->
         <div id="manualAddStep" class="creation-step">
-          <div class="step-title">Step 3: Collection Details</div>
-          <form id="createDeckForm" class="modal-form">
+          <div class="step-title">Step 2: Collection Details</div>
+          <form id="createDeckForm" class="modal-form" novalidate>
             <div class="form-group">
               <label for="newDeckName">Collection Name</label>
               <input id="newDeckName" class="form-input" type="text" placeholder="e.g., My Custom Deck" required>
@@ -418,14 +416,17 @@
               </div>
               <input type="hidden" id="newDeckCollection" value="" required>
             </div>
-            <button type="submit" class="btn btn-primary">Create Collection</button>
+            <div class="step-actions">
+              <button type="button" id="manualBackBtn" class="btn btn-ghost">Back</button>
+              <button type="submit" class="btn btn-primary">Continue</button>
+            </div>
           </form>
         </div>
 
-        <!-- Step 4: Deck Details (After CSV Import) -->
+        <!-- Step 2: Collection details (After CSV Import) -->
         <div id="deckDetailsStep" class="creation-step">
-          <div class="step-title">Step 4: Collection Details</div>
-          <form id="deckDetailsForm" class="modal-form">
+          <div class="step-title">Step 2: Collection Details</div>
+          <form id="deckDetailsForm" class="modal-form" novalidate>
             <div class="form-group">
               <label for="deckName">Collection Name</label>
               <input id="deckName" class="form-input" type="text" placeholder="e.g., My Custom Deck" required>
@@ -443,19 +444,22 @@
               </div>
               <input type="hidden" id="deckCategory" value="" required>
             </div>
-            <button type="submit" class="btn btn-primary">Create Collection</button>
+            <div class="step-actions">
+              <button type="button" id="deckDetailsBackBtn" class="btn btn-ghost">Back</button>
+              <button type="submit" class="btn btn-primary">Continue</button>
+            </div>
           </form>
         </div>
       </div>
     </div>
 
     <div id="addQuestionsModal" class="modal hidden">
-      <div class="modal-content">
+      <div class="modal-content" role="dialog" aria-modal="true">
         <div class="modal-header">
           <h2>Add Questions to <span id="addQuestionsTitle"></span></h2>
           <button class="modal-close" aria-label="Close">&times;</button>
         </div>
-        <form id="addQuestionsForm" class="modal-form">
+        <form id="addQuestionsForm" class="modal-form" novalidate>
           <div class="form-group">
             <label for="addQuestionsEn">Question (English)</label>
             <textarea id="addQuestionsEn" class="form-input" placeholder="Ask a question..." required></textarea>
@@ -477,7 +481,7 @@
 
     <!-- Alert Modal (reusable) -->
     <div id="alertModal" class="modal hidden">
-      <div class="modal-content alert-modal-content">
+      <div class="modal-content alert-modal-content" role="dialog" aria-modal="true" aria-labelledby="alertTitle">
         <div class="alert-icon" id="alertIcon"></div>
         <h2 id="alertTitle" class="alert-title"></h2>
         <p id="alertMessage" class="alert-message"></p>
@@ -487,7 +491,7 @@
       </div>
     </div>
     <div id="confirmModal" class="modal hidden">
-      <div class="modal-content confirm-modal-content">
+      <div class="modal-content confirm-modal-content" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
         <div class="confirm-icon" id="confirmIcon"></div>
         <h2 id="confirmTitle" class="confirm-title"></h2>
         <p id="confirmDescription" class="confirm-description"></p>
@@ -498,11 +502,9 @@
         </div>
       </div>
     </div>
-    <input id="csvInput" type="file" accept=".csv" hidden>
   </div>
 
   <script type="module" src="/src/main.js"></script>
-  <script type="module" src="/src/capacitor-setup.js"></script>
 </body>
 </html>
 
