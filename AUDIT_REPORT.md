@@ -698,14 +698,56 @@ questions, and the `dark-cherry` theme.
 - No fatal logcat errors.
 - Test resume progress was cleared after verification.
 
+### Release install and manual restore
+
+The debug-signed build was replaced by the release-signed build on the same
+phone (Android 17, SDK 37) using the backup-and-restore path.
+
+- Backup verified on the PC first: `appVersion 1.7`, 4 custom collections, 201
+  questions, `custom_1793723875493` set to `dark-cherry`.
+- Debug build uninstalled with `adb uninstall com.marc.anonga`; the shared
+  backup files were not touched.
+- `AnoNga-1.7.apk` installed with `adb install`; `versionCode 8`,
+  `versionName 1.7`, signed `CN=AnoNga`.
+- Automatic restore did **not** run on the fresh install (see below). The
+  **Restore Backup** control in Collections → YOUR DATA was used instead. The
+  file picker opened on Downloads and
+  `anonga-autosave-pre-release-1.7.json` was selected.
+- The confirm dialog reported `Backup from 08/11/2026, 00:17:52. 4 custom
+  collections, 0 imported collections, 0 handmade questions, 0 favorites.`
+  After confirming, the app reloaded with the collections restored.
+- Verified after restore: `deep question` 50 questions, `healty but deep rs` 50
+  questions, `Para sarili` 100 questions, `Device Test` 1 question (201 total),
+  and `deep question` opens with the dark `dark-cherry` theme.
+- Favorites were empty before and after; a temporary favorite used for testing
+  was removed.
+
+### Automatic backup fails on Android 17
+
+On this phone the release build cannot write the automatic backup to
+`/sdcard/Documents/AnoNga/anonga-autosave.json`; the file still has its
+pre-install timestamp and size (00:17, 49,659 bytes). Saving a favorite and
+restarting the app did not update it.
+
+- The app uses the Capacitor Filesystem plugin, which writes to
+  `/storage/emulated/0/Documents` through the direct file API. On Android 11+
+  with `targetSdk 34` that path needs all-files access; `requestLegacyExternalStorage`
+  is ignored.
+- `adb shell appops get com.marc.anonga` shows `MANAGE_EXTERNAL_STORAGE: default`
+  and recent `WRITE_MEDIA_*: deny` entries. The manifest declares
+  `READ_MEDIA_DOCUMENTS` but never requests it, and it does not declare
+  `MANAGE_EXTERNAL_STORAGE`.
+- Because the read also fails, the automatic restore is skipped on a fresh
+  install. The failure is silent: the app keeps working from `localStorage`, so
+  new changes are not copied to shared storage.
+- Workaround: **Back Up Data** still works because it uses the Android share
+  sheet, and **Restore Backup** works through the system file picker. Both were
+  used successfully on the release build.
+
 ### Not verified
 
-- Release-signed `AnoNga-1.7.apk` on a physical device. The phone has the
-  debug-signed build installed; installing the release build over it would fail
-  the signature check and require uninstalling, which would delete the user's
-  live data.
-- A real uninstall and reinstall, for the same data-loss reason.
 - Reset App Data on a device, because it would erase real data.
+- Automatic backup on Android 11+ until the storage-access fix is shipped.
 
 Release APK: `AnoNga-1.7.apk`, versionCode 8, signed.
 SHA-256: `124F6E0C4498AF8D856A2B52B54504FF3C7F1AB77AE85334700FA1286F6ED42A`
