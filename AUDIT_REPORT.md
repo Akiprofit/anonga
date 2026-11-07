@@ -386,4 +386,41 @@ current source and the v1.1 APK contains the rebuilt assets.
 The Android-specific changes (Back button, safe areas, short-screen color layout,
 keyboard behavior, file picker) are implemented and the project builds, but they were
 **not** exercised on a physical phone in this pass. They must not be described as
-device-verified until the checks in §8 are performed.
+device-verified until the checks in section 8 are performed.
+
+---
+
+## 10. v1.2 data-safety verification
+
+Added in v1.2: JSON backup and restore, per-collection CSV export, and a
+typed-confirmation reset control.
+
+### Automated
+
+- `npm test`: 22/22 tests pass, including 12 new tests for backup validation,
+  restore normalization, CSV quoting/BOM, and filenames.
+- `npm run build`: production bundle builds cleanly.
+
+### Browser verified
+
+- Back Up Data downloads a valid `anonga-backup-YYYY-MM-DD.json` with all keys.
+- CSV export quotes commas, quotes, and line breaks, and includes a UTF-8 BOM.
+- Restore upload shows the backup summary, asks for confirmation, and reloads
+  with the restored data.
+- Reset Cancel preserves data; typing `DELETE` clears only `anonga_*` keys.
+- No console errors in any flow.
+
+### Device verified
+
+Samsung RFCY30E0LRT, debug-signed v1.2 installed over v1.1 with no data loss.
+
+- Existing 4 custom collections (201 questions) remained after install.
+- Backup share sheet shows `anonga-backup-2026-11-07.json`.
+- Export CSV share sheet shows `anonga-para-sarili.csv`.
+- Restore: file picker, Downloads, backup, summary "4 custom collections",
+  confirm, app reloads with all 4 collections and the deck theme.
+- Reset modal renders correctly; Cancel preserves data.
+- No user data was cleared during verification.
+
+Release APK: `AnoNga-1.2.apk`, versionCode 3, signed.
+SHA-256: `586B1D6E2D5055A8CD90AE8C0430DCB36CCF1833B385F2414FCEDDA8519B5446`
