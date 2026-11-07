@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   initStorage,
   getLanguage,
@@ -22,6 +22,14 @@ describe('storage', () => {
   it('setLanguage persists and returns success', () => {
     expect(setLanguage('tl')).toBe(true);
     expect(getLanguage()).toBe('tl');
+  });
+
+  it('dispatches anonga:data-changed after a successful write', () => {
+    const handler = vi.fn();
+    window.addEventListener('anonga:data-changed', handler);
+    setLanguage('tl');
+    window.removeEventListener('anonga:data-changed', handler);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 
   it('addFavorite stores and removeFavorite clears', () => {

@@ -115,7 +115,16 @@ const DECK_THEMES_KEY = 'anonga_deck_themes';
 const LANGUAGE_KEY = 'anonga_language';
 const FAVORITES_KEY = 'anonga_favorites';
 const LEGACY_CUSTOM_QUESTIONS_KEY = 'anonga_custom_questions';
-const APP_VERSION = '1.2';
+const APP_VERSION = '1.6';
+const AUTO_BACKUP_PATH = 'AnoNga/anonga-autosave.json';
+const AUTO_RESTORE_MARKER = 'anonga_autorestore_checked';
+
+// Auto-backup state. The backup lives in shared Documents so it survives an
+// uninstall, and is restored automatically on a fresh install.
+let autoBackupTimer = null;
+let autoBackupInFlight = false;
+let autoBackupSuppressed = false;
+let autoRestoreNotice = null;
 
 /* ============================================================================
    Shared helpers
@@ -160,6 +169,7 @@ function readJsonArray(key) {
 function writeJson(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    scheduleAutoBackup();
     return true;
   } catch (error) {
     console.error(`Could not save ${key}:`, error);
@@ -395,9 +405,12 @@ const defaultDecks = [
   },
 ];
 
-export function initApp() {
+export async function initApp() {
   try {
     console.log('AnoNga app initializing...');
+
+    // Restore a shared-storage backup before anything reads local data.
+    await restoreAutoBackupIfNeeded();
 
     initStorage();
     currentLanguage = getLanguage() || 'en';
@@ -443,6 +456,12 @@ export function initApp() {
 
     // Render home screen
     renderHomeScreen();
+
+    // Automatic backup: keep the shared-storage copy current, and tell the
+    // user when a fresh install restored it.
+    await setupAutoBackupListeners();
+    showAutoRestoreNotice();
+    scheduleAutoBackup();
 
     console.log('App initialized successfully');
   } catch (error) {
@@ -1053,6 +1072,137 @@ function collectBackupData() {
   });
 }
 
+async function ensurePublicStoragePermission(Filesystem) {
+  try {
+    const status = await Filesystem.checkPermissions();
+    if (status && status.publicStorage && status.publicStorage !== 'granted') {
+      await Filesystem.requestPermissions();
+    }
+  } catch {
+    // Newer Android versions do not expose this permission at all.
+  }
+}
+
+async function writeAutoBackupText(text) {
+  if (!isNativePlatform()) return false;
+
+  try {
+    const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
+    await ensurePublicStoragePermission(Filesystem);
+    await Filesystem.writeFile({
+      path: AUTO_BACKUP_PATH,
+      data: text,
+      directory: Directory.Documents,
+      encoding: Encoding.UTF8,
+      recursive: true,
+    });
+    return true;
+  } catch (error) {
+    console.warn('Automatic backup failed:', error);
+    return false;
+  }
+}
+
+async function saveAutoBackup() {
+  if (!isNativePlatform() || autoBackupSuppressed || autoBackupInFlight) return false;
+
+  autoBackupInFlight = true;
+  try {
+    const ok = await writeAutoBackupText(JSON.stringify(collectBackupData(), null, 2));
+    if (ok) localStorage.setItem(AUTO_RESTORE_MARKER, '1');
+    return ok;
+  } finally {
+    autoBackupInFlight = false;
+  }
+}
+
+function scheduleAutoBackup() {
+  if (!isNativePlatform() || autoBackupSuppressed) return;
+  if (autoBackupTimer) clearTimeout(autoBackupTimer);
+  autoBackupTimer = window.setTimeout(() => {
+    autoBackupTimer = null;
+    saveAutoBackup();
+  }, 700);
+}
+
+async function flushAutoBackup() {
+  if (autoBackupTimer) {
+    clearTimeout(autoBackupTimer);
+    autoBackupTimer = null;
+  }
+  await saveAutoBackup();
+}
+
+// A fresh install has no restore marker. If a shared-storage backup exists,
+// apply it before the app loads any decks.
+async function restoreAutoBackupIfNeeded() {
+  if (!isNativePlatform() || localStorage.getItem(AUTO_RESTORE_MARKER)) return;
+
+  try {
+    const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
+    await ensurePublicStoragePermission(Filesystem);
+    let contents;
+    try {
+      contents = await Filesystem.readFile({
+        path: AUTO_BACKUP_PATH,
+        directory: Directory.Documents,
+        encoding: Encoding.UTF8,
+      });
+    } catch (error) {
+      const message = String(error && error.message ? error.message : error);
+      const code = String(error && error.code ? error.code : '');
+      if (/not found|no such file|does not exist|ENOENT|NOT_FOUND/i.test(`${code} ${message}`)) {
+        localStorage.setItem(AUTO_RESTORE_MARKER, '1');
+        return;
+      }
+      // Do not overwrite a backup we could not read.
+      autoBackupSuppressed = true;
+      console.warn('Automatic restore could not read the backup:', error);
+      return;
+    }
+
+    const result = parseBackup(String(contents.data || ''));
+    if (!result.ok) {
+      console.warn('Automatic restore skipped:', result.error);
+      localStorage.setItem(AUTO_RESTORE_MARKER, '1');
+      return;
+    }
+
+    if (applyBackup(result.backup)) {
+      localStorage.setItem(AUTO_RESTORE_MARKER, '1');
+      autoRestoreNotice = result.summary;
+    }
+  } catch (error) {
+    autoBackupSuppressed = true;
+    console.warn('Automatic restore failed:', error);
+  }
+}
+
+function showAutoRestoreNotice() {
+  if (!autoRestoreNotice) return;
+  const summary = autoRestoreNotice;
+  autoRestoreNotice = null;
+  showToast(
+    `Restored automatic backup: ${summary.customDecks} collections, ${summary.totalQuestions} questions.`,
+    'success',
+  );
+}
+
+async function setupAutoBackupListeners() {
+  window.addEventListener('anonga:data-changed', scheduleAutoBackup);
+
+  if (!isNativePlatform()) return;
+
+  window.addEventListener('pagehide', flushAutoBackup);
+  try {
+    await CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      if (!isActive) flushAutoBackup();
+    });
+  } catch (error) {
+    console.warn('Could not attach automatic backup listener:', error);
+  }
+}
+
 async function handleBackupData() {
   try {
     const backup = collectBackupData();
@@ -1176,9 +1326,36 @@ function updateResetConfirmState() {
   confirmBtn.disabled = input.value.trim().toUpperCase() !== 'DELETE';
 }
 
-function resetAllData() {
+function buildEmptyBackup() {
+  return buildBackup({
+    language: getLanguage() || 'en',
+    favorites: [],
+    customDecks: [],
+    importedDecks: [],
+    handmadeQuestions: [],
+    deckOverrides: {},
+    deckThemes: {},
+    appVersion: APP_VERSION,
+  });
+}
+
+async function resetAllData() {
   const input = document.getElementById('resetConfirmInput');
   if (!input || input.value.trim().toUpperCase() !== 'DELETE') return;
+
+  // Clear the shared-storage backup first. If that write fails, stop: otherwise
+  // the next launch would restore the data the user just deleted.
+  if (isNativePlatform()) {
+    const ok = await writeAutoBackupText(JSON.stringify(buildEmptyBackup(), null, 2));
+    if (!ok) {
+      showAlertModal({
+        title: 'Reset Failed',
+        message: 'AnoNga could not update the automatic backup, so reset was stopped to protect your data.',
+        type: 'error',
+      });
+      return;
+    }
+  }
 
   try {
     const keys = [];
@@ -1187,6 +1364,8 @@ function resetAllData() {
       if (key && key.startsWith('anonga_')) keys.push(key);
     }
     keys.forEach((key) => localStorage.removeItem(key));
+    // The shared backup is already empty; skip the automatic restore on reload.
+    localStorage.setItem(AUTO_RESTORE_MARKER, '1');
     window.location.reload();
   } catch (error) {
     console.error('Reset failed:', error);

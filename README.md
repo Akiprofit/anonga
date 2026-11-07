@@ -12,7 +12,7 @@
   <a href="https://github.com/Akiprofit/anonga/releases/latest">
     <img alt="Download the Android APK" src="https://img.shields.io/badge/Download-Android%20APK-163D3A?style=for-the-badge&logo=android&logoColor=white" />
   </a>
-  <img alt="Version 1.5" src="https://img.shields.io/badge/version-1.5-C9846F?style=for-the-badge" />
+  <img alt="Version 1.6" src="https://img.shields.io/badge/version-1.6-C9846F?style=for-the-badge" />
   <img alt="Offline first" src="https://img.shields.io/badge/offline-first-5A7A5C?style=for-the-badge" />
 </p>
 
@@ -37,7 +37,7 @@ The latest signed Android APK is on the
 
 ### Install on Android
 
-1. Download `AnoNga-1.5.apk` from the latest release.
+1. Download `AnoNga-1.6.apk` from the latest release.
 2. Open the downloaded APK.
 3. Allow **Install unknown apps** for the browser or file manager you used.
 4. Tap **Install**.
@@ -45,7 +45,9 @@ The latest signed Android APK is on the
    you trust the source.
 
 > **Updating:** install a newer APK over the old one. Keep the same app package
-> and signing key. Uninstalling removes local collections and favorites.
+> and signing key. AnoNga also writes an automatic backup to
+> `Documents/AnoNga/anonga-autosave.json`, so collections, favorites, themes,
+> and handmade questions return automatically after an uninstall and reinstall.
 
 ---
 
@@ -264,13 +266,15 @@ android/app/build/outputs/apk/release/app-release.apk
 
 ## Status
 
-**v1.5** — Card readability release. Card question text starts at the large
-size and auto-fits only when a long question needs more room, so the full
-question stays visible. Other text sizes are unchanged. Builds on v1.3's
-search, bulk question deletion, and cross-collection duplicate questions, plus
-v1.2's JSON backup and restore, per-collection CSV export, and
-typed-confirmation reset control. The app stays local-first and does not
-require an internet connection for normal use. See
+**v1.6** — Data persistence release. AnoNga now writes an automatic JSON
+backup to `Documents/AnoNga/anonga-autosave.json` after every change and
+restores it on a fresh install, so collections, questions, favorites, themes,
+language, and handmade questions survive an uninstall and reinstall. A manual
+backup and restore path remains for moving to a new phone. Builds on v1.5's
+card text auto-fit, v1.3's search, bulk question deletion, and
+cross-collection duplicate questions, plus v1.2's JSON backup and restore,
+per-collection CSV export, and typed-confirmation reset control. The app stays
+local-first and does not require an internet connection for normal use. See
 [`AUDIT_REPORT.md`](AUDIT_REPORT.md) for the confirmed issues, fixes, browser
 test results, and the remaining on-device checks.
 

@@ -10,6 +10,10 @@ const STORAGE_KEYS = {
 function safeSetItem(key, value) {
   try {
     localStorage.setItem(key, value);
+    // Let the auto-backup listener know data changed.
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('anonga:data-changed'));
+    }
     return true;
   } catch (error) {
     console.error(`Could not write ${key}:`, error);

@@ -576,3 +576,62 @@ Samsung RFCY30E0LRT. Debug-signed v1.5 installed over debug-signed v1.4 with
 Release APK: `AnoNga-1.5.apk`, versionCode 6, signed.
 SHA-256: `50D44F7AD0042193C3FA1098DAE7EFBE8F9076CC3C203AF15E0916CD370E0839`
 
+## 14. v1.6 automatic backup across reinstall
+
+Android deletes app-private storage on uninstall. v1.5 only had a manual JSON
+backup through the share sheet, so a user who uninstalled without backing up
+lost every collection, question, favorite, and theme.
+
+### Fix
+
+- After every data change, AnoNga writes a JSON backup to shared storage:
+  `Documents/AnoNga/anonga-autosave.json`.
+- The write is debounced (`700ms`), flushed on `pagehide` and when the app goes
+  to the background, so the file stays current.
+- On a fresh install, the app reads that file before loading any deck and
+  restores it automatically.
+- Restore is gated by the local marker `anonga_autorestore_checked`, so an
+  ordinary update does not overwrite newer local data with an older backup.
+- Favorites and language changes dispatch `anonga:data-changed`, so they also
+  trigger a backup.
+- `Reset App Data` writes an empty backup first. If that write fails, the reset
+  is stopped instead of leaving a backup that would restore deleted data.
+- Added `android:hasFragileUserData="true"` and
+  `WRITE_EXTERNAL_STORAGE` with `android:maxSdkVersion="29"`. Legacy external
+  storage was already enabled.
+- Updated the **YOUR DATA** copy in `index.html` and the README install notes.
+
+### Automated
+
+- `npm test`: 23/23 tests pass, including the new
+  `anonga:data-changed` dispatch test.
+- `npm run build`: production bundle builds cleanly.
+- Release APK manifest verified with `aapt2`: `allowBackup=true`,
+  `hasFragileUserData=true`, `requestLegacyExternalStorage=true`,
+  `WRITE_EXTERNAL_STORAGE` limited to API 29.
+
+### Device verified
+
+Samsung RFCY30E0LRT. Debug-signed v1.6 installed over debug-signed v1.5 with
+`adb install -r`; no data loss.
+
+- The automatic backup file was created at
+  `/sdcard/Documents/AnoNga/anonga-autosave.json` (49,659 bytes).
+- Parsed backup contents: 4 custom collections, 201 custom questions,
+  `dark-cherry` theme, `appVersion 1.6`.
+- Safe restore test: removed only `anonga_autorestore_checked`, force-stopped,
+  and relaunched. The app logged `Filesystem.readFile` before deck loading and
+  restored the same 4 collections, 201 questions, and `dark-cherry` theme.
+- No fatal logcat errors.
+- Leftover `Documents/AnoNga/test-persist.txt` deleted.
+
+### Not verified
+
+- A real uninstall and reinstall on the physical device. That would delete the
+  user's live data and was deliberately avoided.
+- Release-signed `AnoNga-1.6.apk` on a physical Android device.
+- Reset App Data on a device, because it would erase real data.
+
+Release APK: `AnoNga-1.6.apk`, versionCode 7, signed.
+SHA-256: `51C132EA93C9F5F3E29B1DFD8DE89515DA7007C2A7352816DD7C0C71111F2C62`
+
