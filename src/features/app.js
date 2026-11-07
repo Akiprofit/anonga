@@ -26,6 +26,7 @@ const iconSvgs = {
   'plus': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
   'download': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
   'upload': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+  'search': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
   'info': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
   'arrow-left': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>',
   'arrow-right': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>',
@@ -535,6 +536,27 @@ function setupEventListeners() {
     });
   });
 
+  // Search decks and questions.
+  const searchInput = document.getElementById('searchInput');
+  const clearSearchBtn = document.getElementById('clearSearchBtn');
+  if (searchInput) {
+    searchInput.addEventListener('input', applySearch);
+    searchInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        searchInput.value = '';
+        applySearch();
+        searchInput.blur();
+      }
+    });
+  }
+  if (clearSearchBtn && searchInput) {
+    clearSearchBtn.addEventListener('click', () => {
+      searchInput.value = '';
+      applySearch();
+      searchInput.focus();
+    });
+  }
+
   // Collection cards (Favorites & Handmade)
   const favoritesCard = document.getElementById('favoritesCard');
   const handmadeCard = document.getElementById('handmadeCard');
@@ -570,6 +592,21 @@ function setupEventListeners() {
   if (resetConfirmInput && resetConfirmBtn) {
     resetConfirmInput.addEventListener('input', updateResetConfirmState);
     resetConfirmBtn.addEventListener('click', resetAllData);
+  }
+
+  // Bulk question selection and deletion.
+  const selectAllQuestions = document.getElementById('selectAllQuestions');
+  if (selectAllQuestions) {
+    selectAllQuestions.addEventListener('change', () => {
+      document.querySelectorAll('.question-select-checkbox').forEach((box) => {
+        box.checked = selectAllQuestions.checked;
+      });
+      updateQuestionsSelectionState();
+    });
+  }
+  const bulkDeleteQuestionsBtn = document.getElementById('bulkDeleteQuestionsBtn');
+  if (bulkDeleteQuestionsBtn) {
+    bulkDeleteQuestionsBtn.addEventListener('click', deleteSelectedQuestions);
   }
 
   // Bind Edit Details once. Previously it was assigned each time the info modal
@@ -1345,6 +1382,7 @@ function updateLanguageButtons() {
 
 function renderHomeScreen() {
   renderDecksList();
+  applySearch();
 }
 
 function renderDecksList() {
@@ -1396,6 +1434,138 @@ function renderDecksList() {
         event.preventDefault();
         open();
       }
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// SEARCH DECKS AND QUESTIONS
+// ---------------------------------------------------------------------------
+
+function normalizeSearchQuery(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function getSearchableDecks() {
+  let handmadeDeck = allDecks.find((deck) => deck.id === 'handmade');
+  const handmadeQuestions = readJsonArray(HANDMADE_KEY);
+  if (!handmadeDeck && handmadeQuestions.length > 0) {
+    handmadeDeck = {
+      id: 'handmade',
+      name: 'Handmade',
+      description: 'Questions you wrote',
+      collection: 'handmade',
+      questions: [],
+      count: 0,
+      color: DEFAULT_DECK_COLOR,
+      isHandmade: true,
+    };
+    allDecks.push(handmadeDeck);
+  }
+  if (handmadeDeck) {
+    handmadeDeck.questions = handmadeQuestions;
+    ensureQuestionIdsForDeck(handmadeDeck);
+    handmadeDeck.count = handmadeDeck.questions.length;
+  }
+  return allDecks;
+}
+
+function applySearch() {
+  const input = document.getElementById('searchInput');
+  const results = document.getElementById('searchResults');
+  const clearBtn = document.getElementById('clearSearchBtn');
+  const collectionTabs = document.querySelector('.collection-tabs');
+  const decksContainer = document.querySelector('.decks-container');
+  if (!input || !results || !collectionTabs || !decksContainer) return;
+
+  const query = normalizeSearchQuery(input.value);
+  if (clearBtn) clearBtn.classList.toggle('hidden', !query);
+
+  if (!query) {
+    results.classList.add('hidden');
+    results.innerHTML = '';
+    collectionTabs.classList.remove('hidden');
+    decksContainer.classList.remove('hidden');
+    return;
+  }
+
+  collectionTabs.classList.add('hidden');
+  decksContainer.classList.add('hidden');
+  results.classList.remove('hidden');
+  results.innerHTML = renderSearchResults(query);
+  wireSearchResults();
+}
+
+function renderSearchResults(query) {
+  const deckMatches = [];
+  const questionMatches = [];
+  const MAX_QUESTION_RESULTS = 60;
+
+  getSearchableDecks().forEach((deck) => {
+    if (!deck) return;
+    const name = String(deck.name || '').toLowerCase();
+    const description = String(deck.description || '').toLowerCase();
+    if (name.includes(query) || description.includes(query)) {
+      deckMatches.push(deck);
+    }
+    (Array.isArray(deck.questions) ? deck.questions : []).forEach((question) => {
+      const en = String(question.en || '').toLowerCase();
+      const tl = String(question.tl || '').toLowerCase();
+      if (en.includes(query) || tl.includes(query)) {
+        questionMatches.push({ deck, question });
+      }
+    });
+  });
+
+  if (deckMatches.length === 0 && questionMatches.length === 0) {
+    return `<div class="search-empty">No decks or questions match "${escapeHtml(query)}".</div>`;
+  }
+
+  let html = '';
+
+  if (deckMatches.length > 0) {
+    html += '<div class="search-group"><h3 class="section-title">DECKS</h3>';
+    html += deckMatches.map((deck) => {
+      const count = Array.isArray(deck.questions) ? deck.questions.length : (deck.count || 0);
+      return `
+        <button class="search-result-item" type="button" data-deck-id="${escapeHtml(deck.id)}">
+          <span class="search-result-title">${escapeHtml(deck.name)}</span>
+          <span class="search-result-meta">${questionCountLabel(count)}</span>
+        </button>
+      `;
+    }).join('');
+    html += '</div>';
+  }
+
+  if (questionMatches.length > 0) {
+    const visible = questionMatches.slice(0, MAX_QUESTION_RESULTS);
+    html += '<div class="search-group"><h3 class="section-title">QUESTIONS</h3>';
+    html += visible.map(({ deck, question }) => `
+      <button class="search-result-item search-question-item" type="button" data-deck-id="${escapeHtml(deck.id)}" data-question-id="${escapeHtml(question.id || '')}">
+        <span class="search-result-title">${escapeHtml(question.en || question.tl || '')}</span>
+        ${question.en && question.tl ? `<span class="search-result-subtitle">${escapeHtml(question.tl)}</span>` : ''}
+        <span class="search-result-meta">${escapeHtml(deck.name)}</span>
+      </button>
+    `).join('');
+    if (questionMatches.length > MAX_QUESTION_RESULTS) {
+      html += `<p class="search-more">Showing ${MAX_QUESTION_RESULTS} of ${questionMatches.length} matching questions. Type more to narrow it down.</p>`;
+    }
+    html += '</div>';
+  }
+
+  return html;
+}
+
+function wireSearchResults() {
+  const results = document.getElementById('searchResults');
+  if (!results) return;
+
+  results.querySelectorAll('.search-result-item').forEach((item) => {
+    item.addEventListener('click', () => {
+      const deck = allDecks.find((candidate) => candidate.id === item.dataset.deckId);
+      if (!deck) return;
+      const startQuestionId = item.dataset.questionId || '';
+      startDeckSession(deck, startQuestionId ? { startQuestionId } : {});
     });
   });
 }
@@ -1554,6 +1724,15 @@ function startDeckSession(deck, options = {}) {
   if (options.shuffle) sessionOrder = shuffleArray(sessionOrder);
 
   sessionPosition = 0;
+  if (options.startQuestionId) {
+    const sourceIndex = currentDeckQuestions.findIndex(
+      (question) => question && question.id === options.startQuestionId,
+    );
+    if (sourceIndex >= 0) {
+      const orderIndex = sessionOrder.indexOf(sourceIndex);
+      if (orderIndex >= 0) sessionPosition = orderIndex;
+    }
+  }
   isFlipped = false;
   isAnimating = false;
   isShuffling = false;
@@ -2405,32 +2584,29 @@ function normalizeCsvHeader(value) {
     .replace(/[\s-]+/g, '_');
 }
 
-// Check if a question already exists in any deck (by en and tl text)
-function isDuplicateQuestion(en, tl) {
+// Check if an identical question already exists in the target deck (same en and tl text).
+// Duplicates across different decks are allowed on purpose.
+function isDuplicateQuestion(en, tl, deck) {
   const normalizedEn = (en || '').trim().toLowerCase();
   const normalizedTl = (tl || '').trim().toLowerCase();
-  if (!normalizedEn && !normalizedTl) return false;
+  if (!normalizedEn || !normalizedTl) return false;
+  if (!deck || !Array.isArray(deck.questions)) return false;
 
-  for (const deck of allDecks) {
-    if (!deck.questions || !Array.isArray(deck.questions)) continue;
-    for (const q of deck.questions) {
-      const qEn = (q.en || '').trim().toLowerCase();
-      const qTl = (q.tl || '').trim().toLowerCase();
-      if (normalizedEn && qEn === normalizedEn) return true;
-      if (normalizedTl && qTl === normalizedTl) return true;
-    }
+  for (const q of deck.questions) {
+    const qEn = (q.en || '').trim().toLowerCase();
+    const qTl = (q.tl || '').trim().toLowerCase();
+    if (qEn === normalizedEn && qTl === normalizedTl) return true;
   }
   return false;
 }
 
-// Deduplicate an array of questions against all existing decks
+// Deduplicate an array of questions within the same import only.
 function deduplicateQuestions(questions) {
   const seen = new Set();
   const result = [];
   for (const q of questions) {
     const key = ((q.en || '').trim().toLowerCase()) + '|' + ((q.tl || '').trim().toLowerCase());
     if (seen.has(key)) continue;
-    if (isDuplicateQuestion(q.en, q.tl)) continue;
     seen.add(key);
     result.push(q);
   }
@@ -2632,6 +2808,74 @@ function switchBackToCSVStep() {
   showCreationStep('csvImportStep');
 }
 
+function updateQuestionsSelectionState() {
+  const preview = document.getElementById('deckQuestionsPreview');
+  const toolbar = document.getElementById('questionsToolbar');
+  const selectAll = document.getElementById('selectAllQuestions');
+  const countEl = document.getElementById('questionsSelectedCount');
+  const deleteBtn = document.getElementById('bulkDeleteQuestionsBtn');
+  if (!preview) return;
+
+  const boxes = Array.from(preview.querySelectorAll('.question-select-checkbox'));
+  const selected = boxes.filter((box) => box.checked).length;
+
+  if (toolbar) toolbar.classList.toggle('hidden', boxes.length === 0);
+  if (countEl) countEl.textContent = `${selected} selected`;
+  if (deleteBtn) deleteBtn.disabled = selected === 0;
+  if (selectAll) {
+    selectAll.checked = boxes.length > 0 && selected === boxes.length;
+    selectAll.indeterminate = selected > 0 && selected < boxes.length;
+  }
+}
+
+async function deleteSelectedQuestions() {
+  if (!currentDeck || !Array.isArray(currentDeck.questions)) return;
+
+  const preview = document.getElementById('deckQuestionsPreview');
+  if (!preview) return;
+  const selectedIds = new Set(
+    Array.from(preview.querySelectorAll('.question-select-checkbox:checked'))
+      .map((box) => box.dataset.questionId)
+      .filter(Boolean),
+  );
+  if (selectedIds.size === 0) return;
+
+  const count = selectedIds.size;
+  const confirmed = await showConfirmModal({
+    title: `Delete ${count} ${count === 1 ? 'question' : 'questions'}?`,
+    description: `You are about to remove ${count} selected ${count === 1 ? 'question' : 'questions'} from "${currentDeck.name}".`,
+    warning: 'This action cannot be undone.',
+    confirmText: 'Delete selected',
+    cancelText: 'Cancel',
+    isDanger: true,
+  });
+  if (!confirmed) return;
+
+  const previousQuestions = currentDeck.questions;
+  const nextQuestions = previousQuestions.filter((question) => !selectedIds.has(question.id));
+  currentDeck.questions = nextQuestions;
+  currentDeck.count = nextQuestions.length;
+
+  if (!saveDeckQuestions(currentDeck)) {
+    currentDeck.questions = previousQuestions;
+    currentDeck.count = previousQuestions.length;
+    notifySaveFailure();
+    return;
+  }
+
+  refreshDeckCounts();
+  renderCollectionsTab();
+  renderDecksList();
+  renderQuestionsPreview();
+
+  const countEl = document.getElementById('infoDeckCount');
+  if (countEl) {
+    countEl.textContent = `${questionCountLabel(currentDeck.count || 0)} in this deck`;
+  }
+
+  showToast(`${count} ${count === 1 ? 'question' : 'questions'} deleted.`, 'success');
+}
+
 window.removeQuestion = async function(questionId) {
   if (!currentDeck || !Array.isArray(currentDeck.questions)) return;
 
@@ -2661,7 +2905,7 @@ window.removeQuestion = async function(questionId) {
 
   refreshDeckCounts();
   renderCollectionsTab();
-  renderDecks();
+  renderDecksList();
   renderQuestionsPreview();
 
   const countEl = document.getElementById('infoDeckCount');
@@ -2688,9 +2932,10 @@ function handleAddQuestion(e) {
     return;
   }
 
-  // Check for duplicate question
-  if (isDuplicateQuestion(en, tl)) {
-    showAlertModal({ title: 'Duplicate Question', message: 'This question already exists in a deck. Skipping.', type: 'warning' });
+  // Only exact duplicates inside the same deck are blocked. The same question
+  // may live in different decks.
+  if (isDuplicateQuestion(en, tl, currentDeck)) {
+    showAlertModal({ title: 'Duplicate Question', message: 'This question already exists in this collection.', type: 'warning' });
     document.getElementById('addQuestionsForm').reset();
     return;
   }
@@ -2714,7 +2959,7 @@ function handleAddQuestion(e) {
 
   refreshDeckCounts();
   renderCollectionsTab();
-  renderDecks();
+  renderDecksList();
 
   // Keep the info dialog's count in sync while it is open.
   const infoCountEl = document.getElementById('infoDeckCount');
@@ -2736,23 +2981,32 @@ function renderQuestionsPreview() {
   if (!preview) return;
   if (!currentDeck || !currentDeck.questions || currentDeck.questions.length === 0) {
     preview.innerHTML = '<div class="questions-empty">No questions yet</div>';
+    updateQuestionsSelectionState();
     return;
   }
 
   const html = currentDeck.questions.map((q, idx) => `
-    <div class="question-item" style="margin-bottom: 12px; padding: 8px; background: #f5f5f5; border-radius: 4px; position: relative;">
-      <button class="question-remove-btn" data-question-id="${escapeHtml(q.id)}" type="button" aria-label="Remove question" style="position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%; border: none; background: rgba(184, 87, 122, 0.15); color: var(--accent-rose); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; line-height: 1;">&times;</button>
-      <div style="font-weight: 600; font-size: 12px; color: #666; margin-bottom: 4px;">${idx + 1}.</div>
-      <div style="font-size: 13px; margin-bottom: 4px; padding-right: 24px;">${escapeHtml(q.en)}</div>
-      <div style="font-size: 13px; color: #666; font-style: italic; padding-right: 24px;">${escapeHtml(q.tl)}</div>
+    <div class="question-item">
+      <input class="question-select-checkbox" type="checkbox" data-question-id="${escapeHtml(q.id)}" aria-label="Select question ${idx + 1}">
+      <div class="question-item-content">
+        <div class="question-index">${idx + 1}.</div>
+        <div class="question-text">${escapeHtml(q.en)}</div>
+        <div class="question-text-tl">${escapeHtml(q.tl)}</div>
+      </div>
+      <button class="question-remove-btn" data-question-id="${escapeHtml(q.id)}" type="button" aria-label="Remove question">&times;</button>
     </div>
   `).join('');
 
   preview.innerHTML = html;
 
+  preview.querySelectorAll('.question-select-checkbox').forEach((box) => {
+    box.addEventListener('change', updateQuestionsSelectionState);
+  });
   preview.querySelectorAll('.question-remove-btn').forEach((btn) => {
     btn.addEventListener('click', () => window.removeQuestion(btn.dataset.questionId));
   });
+
+  updateQuestionsSelectionState();
 }
 
 function openAddQuestionsModal() {

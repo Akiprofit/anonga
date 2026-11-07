@@ -424,3 +424,46 @@ Samsung RFCY30E0LRT, debug-signed v1.2 installed over v1.1 with no data loss.
 
 Release APK: `AnoNga-1.2.apk`, versionCode 3, signed.
 SHA-256: `586B1D6E2D5055A8CD90AE8C0430DCB36CCF1833B385F2414FCEDDA8519B5446`
+
+---
+
+## 11. v1.3 feature verification
+
+Added in v1.3: deck and question search, bulk question deletion, and
+cross-collection duplicate questions.
+
+### Automated
+
+- `npm test`: 22/22 tests pass.
+- `npm run build`: production bundle builds cleanly.
+
+### Browser verified
+
+- Search matches deck names, deck descriptions, English questions, and Taglish
+  questions.
+- Tapping a question result opens its collection at the matching card.
+- Clear search restores the collection tabs and deck grid.
+- Bulk selection shows the selected count, supports select-all and partial
+  selection, and disables delete when nothing is selected.
+- Bulk delete asks for confirmation, removes only the selected questions,
+  updates the deck count, and persists after reload.
+- An identical question in a different collection is accepted silently.
+- An identical question in the same collection is blocked with the custom
+  duplicate modal.
+- Test collections used for verification were deleted afterward; the five
+  built-in decks still contain 300 questions.
+- No console errors after the final fix.
+
+### Fixed during verification
+
+- `handleAddQuestion`, `removeQuestion`, and bulk delete called the removed
+  `renderDecks` helper. They now call `renderDecksList`, so the deck grid and
+  question preview refresh immediately after add/delete.
+
+### Not verified
+
+- Physical Android device pass for v1.3. Browser verification only.
+
+Release APK: `AnoNga-1.3.apk`, versionCode 4, signed.
+SHA-256: `F9EAC87FFEF4195007B3CFA0A09F79254C124356E30259FB7A23BE7B768D6CFC`
+

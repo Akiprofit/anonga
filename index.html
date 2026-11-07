@@ -39,6 +39,14 @@
             <p>Find a little laughter, a familiar story, or somewhere deeper to go.</p>
           </div>
 
+          <!-- Search decks and questions -->
+          <div class="search-box">
+            <span class="icon-wrapper search-icon" data-icon="search"></span>
+            <input id="searchInput" class="search-input" type="search" placeholder="Search decks and questions" autocomplete="off" spellcheck="false" aria-label="Search decks and questions">
+            <button id="clearSearchBtn" class="search-clear hidden" type="button" aria-label="Clear search"><span class="icon-wrapper" data-icon="x"></span></button>
+          </div>
+          <div id="searchResults" class="search-results hidden" aria-live="polite"></div>
+
           <!-- Collection Tabs -->
           <div class="collection-tabs">
             <button class="tab-btn active" data-collection="all">All decks</button>
@@ -493,6 +501,14 @@
           </div>
           <button type="submit" class="btn btn-primary">Add Question</button>
         </form>
+        <div id="questionsToolbar" class="questions-toolbar hidden">
+          <label class="questions-select-all">
+            <input id="selectAllQuestions" type="checkbox">
+            <span>Select all</span>
+          </label>
+          <span id="questionsSelectedCount" class="questions-selected-count">0 selected</span>
+          <button id="bulkDeleteQuestionsBtn" class="btn btn-danger bulk-delete-btn" type="button" disabled>Delete selected</button>
+        </div>
         <div id="deckQuestionsPreview" class="questions-preview">
           <!-- Questions will be listed here -->
         </div>

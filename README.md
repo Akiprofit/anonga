@@ -12,7 +12,7 @@
   <a href="https://github.com/Akiprofit/anonga/releases/latest">
     <img alt="Download the Android APK" src="https://img.shields.io/badge/Download-Android%20APK-163D3A?style=for-the-badge&logo=android&logoColor=white" />
   </a>
-  <img alt="Version 1.2" src="https://img.shields.io/badge/version-1.2-C9846F?style=for-the-badge" />
+  <img alt="Version 1.3" src="https://img.shields.io/badge/version-1.3-C9846F?style=for-the-badge" />
   <img alt="Offline first" src="https://img.shields.io/badge/offline-first-5A7A5C?style=for-the-badge" />
 </p>
 
@@ -37,7 +37,7 @@ The latest signed Android APK is on the
 
 ### Install on Android
 
-1. Download `AnoNga-1.2.apk` from the latest release.
+1. Download `AnoNga-1.3.apk` from the latest release.
 2. Open the downloaded APK.
 3. Allow **Install unknown apps** for the browser or file manager you used.
 4. Tap **Install**.
@@ -74,11 +74,18 @@ time with the **EN / TL** button.
 - Progress counter and completion screen
 - Favorites for questions worth coming back to
 
+### Search decks and questions
+
+Use the search box on the Decks tab to filter collections by name or
+description, and to find questions in English or Taglish. Tap a question result
+to open that collection at the matching card.
+
 ### Collections
 
 - Create your own collection with a name, description, and category
 - Categories: **Solo**, **Together**, or **Friends**
 - Add questions manually
+- Select one or more questions and delete them together after a confirmation
 - Import questions from a CSV file
 - Choose from **16 collection colors** in a live preview
 - Custom confirmation modal before deleting a collection
@@ -98,7 +105,9 @@ A ready-to-use file is included at
 [`samples/sample-import.csv`](samples/sample-import.csv).
 
 The importer supports quoted fields, commas inside questions, and line breaks
-inside quoted fields. Duplicate questions are skipped.
+inside quoted fields. Duplicates inside one import are skipped. The same
+question may live in more than one collection; an exact duplicate inside the
+same collection is blocked.
 
 Export any collection from its details screen with **Export CSV**. The exported
 file keeps the English question, Taglish question, and reflection columns, and
@@ -255,9 +264,11 @@ android/app/build/outputs/apk/release/app-release.apk
 
 ## Status
 
-**v1.2** — Data-safety release. Adds JSON backup and restore, per-collection CSV
-export, and a typed-confirmation reset control. The app stays local-first and
-does not require an internet connection for normal use. See
+**v1.3** — Search and collection-management release. Adds deck and question
+search, bulk question deletion, and cross-collection duplicate questions.
+Builds on v1.2's JSON backup and restore, per-collection CSV export, and
+typed-confirmation reset control. The app stays local-first and does not require
+an internet connection for normal use. See
 [`AUDIT_REPORT.md`](AUDIT_REPORT.md) for the confirmed issues, fixes, browser
 test results, and the remaining on-device checks.
 
