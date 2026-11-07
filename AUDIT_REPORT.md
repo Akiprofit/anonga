@@ -460,9 +460,34 @@ cross-collection duplicate questions.
   `renderDecks` helper. They now call `renderDecksList`, so the deck grid and
   question preview refresh immediately after add/delete.
 
+### Device verified
+
+Samsung RFCY30E0LRT. Debug-signed v1.3 installed over debug-signed v1.2 with
+`adb install -r`; no data loss.
+
+- 4 custom collections, 201 questions, and the `dark-cherry` theme remained.
+- Search matched deck names, deck descriptions, English questions, and Taglish
+  questions.
+- Tapping a question result opened Getting to Know at `20 / 60`.
+- Temporary deck: added 3 questions; an exact same-deck duplicate was blocked;
+  the same question in another temporary deck was accepted.
+- Bulk-selected 2 questions, confirmed deletion, and verified 1 remained after
+  reload.
+- Temporary decks were deleted afterward; the real 4 collections, 201
+  questions, and theme were unchanged.
+- No fatal logcat errors.
+
+### Signing note
+
+The installed v1.2 app was debug-signed. The published v1.3 APK is
+release-signed, so installing it over v1.2 would fail the signature check and
+require an uninstall, which deletes app data. The device test used a
+debug-signed v1.3 build with the same code to preserve user data. The release
+APK itself was not installed on the device.
+
 ### Not verified
 
-- Physical Android device pass for v1.3. Browser verification only.
+- Release-signed `AnoNga-1.3.apk` on a physical Android device.
 
 Release APK: `AnoNga-1.3.apk`, versionCode 4, signed.
 SHA-256: `F9EAC87FFEF4195007B3CFA0A09F79254C124356E30259FB7A23BE7B768D6CFC`
