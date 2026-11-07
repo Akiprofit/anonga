@@ -105,6 +105,7 @@ try {
 let pendingDeckDetails = null;
 let editingDeckId = null;
 let infoDeckId = null;
+let editingQuestionId = null;
 
 const DEFAULT_DECK_COLOR = '#c9846f';
 const CUSTOM_DECKS_KEY = 'anonga_custom_decks';
@@ -115,7 +116,8 @@ const DECK_THEMES_KEY = 'anonga_deck_themes';
 const LANGUAGE_KEY = 'anonga_language';
 const FAVORITES_KEY = 'anonga_favorites';
 const LEGACY_CUSTOM_QUESTIONS_KEY = 'anonga_custom_questions';
-const APP_VERSION = '1.6';
+const SESSION_PROGRESS_KEY = 'anonga_session_progress';
+const APP_VERSION = '1.7';
 const AUTO_BACKUP_PATH = 'AnoNga/anonga-autosave.json';
 const AUTO_RESTORE_MARKER = 'anonga_autorestore_checked';
 
@@ -239,6 +241,110 @@ function saveDeckQuestions(deck) {
   }
   deck.hasQuestionOverrides = true;
   return saveDeckQuestionOverrides();
+}
+
+// One case-insensitive rule for both the manual and CSV creation paths.
+function findDeckByName(name, excludeId = null) {
+  const normalized = String(name || '').trim().toLowerCase();
+  if (!normalized) return null;
+  return allDecks.find((deck) => (
+    deck
+    && deck.id !== excludeId
+    && String(deck.name || '').trim().toLowerCase() === normalized
+  )) || null;
+}
+
+// Resume progress is intentionally not part of the backup: it is device state,
+// not user content. It is still cleared by Reset App Data.
+function readSessionProgressMap() {
+  const map = readJson(SESSION_PROGRESS_KEY, {});
+  return map && typeof map === 'object' && !Array.isArray(map) ? map : {};
+}
+
+function writeSessionProgressMap(map) {
+  try {
+    localStorage.setItem(SESSION_PROGRESS_KEY, JSON.stringify(map));
+  } catch (error) {
+    console.warn('Could not save session progress:', error);
+  }
+}
+
+function saveSessionProgress() {
+  if (!currentDeck || !currentDeck.id || !currentDeckQuestions.length) return;
+  const question = getCurrentQuestion();
+  const map = readSessionProgressMap();
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  Object.keys(map).forEach((key) => {
+    if (!map[key] || !Number.isFinite(map[key].updatedAt) || map[key].updatedAt < cutoff) {
+      delete map[key];
+    }
+  });
+  map[currentDeck.id] = {
+    questionId: question && question.id ? question.id : '',
+    position: sessionPosition,
+    updatedAt: Date.now(),
+  };
+  writeSessionProgressMap(map);
+}
+
+function clearSessionProgress(deckId) {
+  if (!deckId) return;
+  const map = readSessionProgressMap();
+  if (!Object.prototype.hasOwnProperty.call(map, deckId)) return;
+  delete map[deckId];
+  writeSessionProgressMap(map);
+}
+
+// Re-sync the live play session after questions are added, edited or removed.
+// Rebuilds sessionOrder so new cards are reachable and removed cards do not
+// leave stale indexes behind, then keeps the user on the same card when it
+// still exists.
+function refreshCurrentDeckSession(deck) {
+  if (!deck || !currentDeck || currentDeck.id !== deck.id) return;
+
+  const previousQuestions = currentDeckQuestions;
+  const currentQuestion = previousQuestions[sessionOrder[sessionPosition]];
+  const currentId = currentQuestion && currentQuestion.id ? currentQuestion.id : '';
+
+  currentDeckQuestions = Array.isArray(deck.questions) ? deck.questions : [];
+
+  const indexById = new Map();
+  currentDeckQuestions.forEach((question, index) => {
+    if (question && question.id) indexById.set(question.id, index);
+  });
+
+  const rebuiltOrder = [];
+  const usedIndexes = new Set();
+  sessionOrder.forEach((oldIndex) => {
+    const question = previousQuestions[oldIndex];
+    const newIndex = question && question.id ? indexById.get(question.id) : undefined;
+    if (newIndex !== undefined && !usedIndexes.has(newIndex)) {
+      rebuiltOrder.push(newIndex);
+      usedIndexes.add(newIndex);
+    }
+  });
+  currentDeckQuestions.forEach((_, index) => {
+    if (!usedIndexes.has(index)) rebuiltOrder.push(index);
+  });
+  sessionOrder = rebuiltOrder;
+
+  const targetIndex = currentId
+    ? currentDeckQuestions.findIndex((question) => question && question.id === currentId)
+    : -1;
+  const targetPosition = targetIndex >= 0 ? sessionOrder.indexOf(targetIndex) : -1;
+  if (targetPosition >= 0) {
+    sessionPosition = targetPosition;
+  } else if (sessionPosition >= currentDeckQuestions.length) {
+    sessionPosition = Math.max(0, currentDeckQuestions.length - 1);
+  }
+
+  const playScreen = document.getElementById('playScreen');
+  if (playScreen && playScreen.classList.contains('active')) {
+    renderCardContent();
+    updateDeckProgress();
+    updateStack();
+    updatePlayControls();
+  }
 }
 
 function refreshDeckCounts() {
@@ -661,6 +767,9 @@ function setupEventListeners() {
   const addQuestionsForm = document.getElementById('addQuestionsForm');
   if (addQuestionsForm) addQuestionsForm.addEventListener('submit', handleAddQuestion);
 
+  const cancelEditQuestionBtn = document.getElementById('cancelEditQuestionBtn');
+  if (cancelEditQuestionBtn) cancelEditQuestionBtn.addEventListener('click', resetQuestionEditor);
+
   const manualBtn = document.getElementById('manualImportBtn');
   if (manualBtn) manualBtn.addEventListener('click', switchToManualAdd);
 
@@ -873,7 +982,7 @@ function showConfirmModal({ title, description, warning, confirmText, cancelText
 }
 
 // Toast notification system
-function showToast(message, type = 'info', duration = 3000) {
+function showToast(message, type = 'info', duration = 3000, action = null) {
   const container = document.getElementById('toastContainer');
   if (!container) return;
 
@@ -897,6 +1006,20 @@ function showToast(message, type = 'info', duration = 3000) {
 
   toast.appendChild(iconEl);
   toast.appendChild(messageEl);
+
+  if (action && typeof action.onClick === 'function') {
+    const actionBtn = document.createElement('button');
+    actionBtn.type = 'button';
+    actionBtn.className = 'toast-action';
+    actionBtn.textContent = action.label || 'Undo';
+    actionBtn.addEventListener('click', () => {
+      actionBtn.disabled = true;
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+      action.onClick();
+    });
+    toast.appendChild(actionBtn);
+  }
+
   container.appendChild(toast);
 
   // Auto-remove after duration
@@ -1404,6 +1527,144 @@ function wireDeckCsvButton(deck) {
   btn.onclick = () => exportDeckCsv(deck);
 }
 
+function wireDeckImportButton(deck) {
+  const btn = document.getElementById('importDeckCsvBtn');
+  const input = document.getElementById('deckCsvFileInput');
+  if (!btn || !input || !deck) return;
+
+  btn.onclick = () => {
+    input.value = '';
+    input.dataset.deckId = deck.id;
+    input.click();
+  };
+
+  input.onchange = () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const target = allDecks.find((item) => item.id === input.dataset.deckId) || deck;
+    handleDeckCsvImport(target, file);
+    input.value = '';
+  };
+}
+
+// Append CSV questions to a deck the user already has. Rows that exactly match
+// a question in that deck (normalized EN + TL) are skipped, and so are rows
+// missing either side. Duplicates across different decks stay allowed.
+async function handleDeckCsvImport(deck, file) {
+  if (!deck || !file) return;
+
+  let text = '';
+  try {
+    text = await file.text();
+  } catch (error) {
+    showAlertModal({ title: 'Could Not Read File', message: 'AnoNga could not read that CSV file. Try again.', type: 'error' });
+    return;
+  }
+
+  let rows = [];
+  try {
+    rows = parseCsv(text);
+  } catch (error) {
+    showAlertModal({ title: 'Parse Error', message: 'Error parsing CSV: ' + error.message, type: 'error' });
+    return;
+  }
+
+  if (rows.length < 2) {
+    showAlertModal({ title: 'Invalid CSV', message: 'CSV file must have a header row and at least one question.', type: 'error' });
+    return;
+  }
+
+  const parsed = csvRowsToQuestions(rows);
+  if (parsed.length === 0) {
+    showAlertModal({ title: 'No Questions Found', message: 'No valid questions found in this CSV file.', type: 'warning' });
+    return;
+  }
+
+  ensureQuestionIdsForDeck(deck);
+  const existing = Array.isArray(deck.questions) ? deck.questions : [];
+  const seen = new Set(
+    existing.map((question) => (
+      `${(question && question.en || '').trim().toLowerCase()}|${(question && question.tl || '').trim().toLowerCase()}`
+    )),
+  );
+
+  const additions = [];
+  let skipped = 0;
+  parsed.forEach((question) => {
+    const en = String(question.en || '').trim();
+    const tl = String(question.tl || '').trim();
+    if (!en || !tl) {
+      skipped += 1;
+      return;
+    }
+    const key = `${en.toLowerCase()}|${tl.toLowerCase()}`;
+    if (seen.has(key)) {
+      skipped += 1;
+      return;
+    }
+    seen.add(key);
+    additions.push({ ...question, en, tl });
+  });
+
+  if (additions.length === 0) {
+    showAlertModal({
+      title: 'No New Questions',
+      message: `Every row in this file already exists in "${deck.name}" or is incomplete.`,
+      type: 'info',
+    });
+    return;
+  }
+
+  const confirmed = await showConfirmModal({
+    title: 'Import questions?',
+    description: `Add ${additions.length} ${additions.length === 1 ? 'question' : 'questions'} to "${deck.name}".`,
+    warning: skipped > 0
+      ? `${skipped} ${skipped === 1 ? 'row' : 'rows'} will be skipped because ${skipped === 1 ? 'it duplicates an existing question or is incomplete' : 'they duplicate an existing question or are incomplete'}.`
+      : '',
+    confirmText: 'Import',
+    cancelText: 'Cancel',
+    isDanger: false,
+  });
+  if (!confirmed) return;
+
+  const stamp = Date.now();
+  const newQuestions = additions.map((question, index) => ({
+    ...question,
+    id: `${deck.id}_q${stamp}_${index}`,
+  }));
+
+  const previousQuestions = deck.questions;
+  const previousCount = deck.count;
+  deck.questions = existing.concat(newQuestions);
+  deck.count = deck.questions.length;
+
+  if (!saveDeckQuestions(deck)) {
+    deck.questions = previousQuestions;
+    deck.count = previousCount;
+    notifySaveFailure();
+    return;
+  }
+
+  refreshDeckCounts();
+  renderCollectionsTab();
+  renderDecksList();
+
+  if (currentDeck && currentDeck.id === deck.id) {
+    renderQuestionsPreview();
+    refreshCurrentDeckSession(deck);
+  }
+
+  const countEl = document.getElementById('infoDeckCount');
+  if (countEl) {
+    countEl.textContent = `${questionCountLabel(deck.count || 0)} in this deck`;
+  }
+
+  showToast(
+    `Imported ${newQuestions.length} ${newQuestions.length === 1 ? 'question' : 'questions'}${skipped > 0 ? `, skipped ${skipped}` : ''}.`,
+    'success',
+  );
+}
+
 // Override native alert and confirm with custom implementations
 // (Keeps backward compat for any remaining calls)
 const _nativeAlert = window.alert;
@@ -1434,13 +1695,16 @@ async function deleteDeck(deckId) {
   const confirmed = await showConfirmModal({
     title: 'Delete this collection?',
     description: `You're about to delete "${deck.name}".`,
-    warning: "This will permanently remove the collection and its questions. You can't undo this action.",
+    warning: 'The collection and its questions will be removed. You can undo this for a few seconds.',
     confirmText: 'Delete collection',
     cancelText: 'Cancel',
     isDanger: true,
   });
 
   if (!confirmed) return;
+
+  const deletedIndex = allDecks.findIndex((item) => item.id === deckId);
+  const wasImported = Boolean(deck.isImported || String(deck.id).startsWith('imported_'));
 
   try {
     const nextDecks = allDecks.filter((item) => item.id !== deckId);
@@ -1454,12 +1718,18 @@ async function deleteDeck(deckId) {
     );
 
     const themeMap = readJson(DECK_THEMES_KEY, {});
+    const deletedTheme = themeMap && typeof themeMap === 'object' && !Array.isArray(themeMap)
+      ? themeMap[deckId]
+      : undefined;
     if (themeMap && typeof themeMap === 'object' && !Array.isArray(themeMap)) {
       delete themeMap[deckId];
     }
     const okThemes = writeJson(DECK_THEMES_KEY, themeMap && typeof themeMap === 'object' ? themeMap : {});
 
     const overrides = readJson(DECK_OVERRIDES_KEY, {});
+    const deletedOverride = overrides && typeof overrides === 'object' && !Array.isArray(overrides)
+      ? overrides[deckId]
+      : undefined;
     if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
       delete overrides[deckId];
     }
@@ -1485,11 +1755,72 @@ async function deleteDeck(deckId) {
     closeModals();
     renderCollectionsTab();
     renderDecksList();
-    showToast(`Deleted "${deck.name}".`, 'success');
+    clearSessionProgress(deckId);
+    showToast(`Deleted "${deck.name}".`, 'success', 6000, {
+      label: 'Undo',
+      onClick: () => restoreDeletedDeck({
+        deck,
+        index: deletedIndex,
+        theme: deletedTheme,
+        override: deletedOverride,
+        wasImported,
+      }),
+    });
   } catch (error) {
     console.error('Delete failed:', error);
     showAlertModal({ title: 'Delete Failed', message: 'Failed to delete the collection. Please try again.', type: 'error' });
   }
+}
+
+function restoreDeletedDeck(snapshot) {
+  if (!snapshot || !snapshot.deck) return;
+  const { deck, index, theme, override, wasImported } = snapshot;
+  if (allDecks.some((item) => item.id === deck.id)) return;
+
+  // A new deck may have taken the same name during the undo window.
+  if (findDeckByName(deck.name, deck.id)) {
+    showToast(`Cannot restore "${deck.name}": that name is now in use.`, 'error');
+    return;
+  }
+
+  const insertAt = Math.max(0, Math.min(Number(index) || 0, allDecks.length));
+  allDecks.splice(insertAt, 0, deck);
+
+  const deckListOk = wasImported
+    ? writeJson(
+        IMPORTED_DECKS_KEY,
+        allDecks.filter((item) => item && (item.isImported || String(item.id).startsWith('imported_'))),
+      )
+    : writeJson(CUSTOM_DECKS_KEY, customDecksFrom(allDecks));
+
+  let themeOk = true;
+  if (theme !== undefined) {
+    const themeMap = readJson(DECK_THEMES_KEY, {});
+    if (themeMap && typeof themeMap === 'object' && !Array.isArray(themeMap)) {
+      themeMap[deck.id] = theme;
+      themeOk = writeJson(DECK_THEMES_KEY, themeMap);
+    }
+  }
+
+  let overrideOk = true;
+  if (override !== undefined) {
+    const overrides = readJson(DECK_OVERRIDES_KEY, {});
+    if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
+      overrides[deck.id] = override;
+      overrideOk = writeJson(DECK_OVERRIDES_KEY, overrides);
+    }
+  }
+
+  if (!deckListOk || !themeOk || !overrideOk) {
+    allDecks = allDecks.filter((item) => item.id !== deck.id);
+    notifySaveFailure();
+    return;
+  }
+
+  refreshDeckCounts();
+  renderCollectionsTab();
+  renderDecksList();
+  showToast(`Restored "${deck.name}".`, 'success');
 }
 
 function renderCollectionsTab() {
@@ -1785,6 +2116,7 @@ window.viewDeckDetails = function(deckId) {
     }
 
     wireDeckCsvButton(deck);
+    wireDeckImportButton(deck);
 
     const deleteDeckBtn = document.getElementById('deleteDeckBtn');
     if (deleteDeckBtn) {
@@ -1911,6 +2243,7 @@ function startDeckSession(deck, options = {}) {
   if (options.shuffle) sessionOrder = shuffleArray(sessionOrder);
 
   sessionPosition = 0;
+  let resumedFromSaved = false;
   if (options.startQuestionId) {
     const sourceIndex = currentDeckQuestions.findIndex(
       (question) => question && question.id === options.startQuestionId,
@@ -1918,6 +2251,22 @@ function startDeckSession(deck, options = {}) {
     if (sourceIndex >= 0) {
       const orderIndex = sessionOrder.indexOf(sourceIndex);
       if (orderIndex >= 0) sessionPosition = orderIndex;
+    }
+  } else if (!options.fresh && deck.id) {
+    const saved = readSessionProgressMap()[deck.id];
+    if (saved) {
+      const byQuestionId = saved.questionId
+        ? currentDeckQuestions.findIndex((question) => question && question.id === saved.questionId)
+        : -1;
+      const savedPosition = Number(saved.position);
+      let target = byQuestionId >= 0
+        ? sessionOrder.indexOf(byQuestionId)
+        : (Number.isInteger(savedPosition) ? savedPosition : 0);
+      if (!Number.isInteger(target) || target < 0 || target >= currentDeckQuestions.length) target = 0;
+      if (target > 0) {
+        sessionPosition = target;
+        resumedFromSaved = true;
+      }
     }
   }
   isFlipped = false;
@@ -1933,6 +2282,10 @@ function startDeckSession(deck, options = {}) {
   updateStack();
   updatePlayControls();
   playStageEntrance();
+
+  if (resumedFromSaved) {
+    showToast(`Resumed at card ${sessionPosition + 1} of ${currentDeckQuestions.length}.`, 'info', 2500);
+  }
 }
 
 function showPlayScreen() {
@@ -2050,6 +2403,7 @@ function renderCardContent() {
   updateFavoriteButtonState();
   updatePlayControls();
   scheduleCardTextFit();
+  saveSessionProgress();
 }
 
 function updateFavoriteButtonState() {
@@ -2379,6 +2733,7 @@ function showCompletion() {
 
   isComplete = true;
   isAnimating = false;
+  clearSessionProgress(currentDeck && currentDeck.id);
   resetCardMotion();
   updatePlayControls();
 
@@ -2433,6 +2788,7 @@ function buildConfetti() {
 function restartSession(shouldShuffle = false) {
   hideCompletion(true);
   isComplete = false;
+  clearSessionProgress(currentDeck && currentDeck.id);
   sessionOrder = currentDeckQuestions.map((_, index) => index);
   if (shouldShuffle) sessionOrder = shuffleArray(sessionOrder);
   sessionPosition = 0;
@@ -2647,6 +3003,8 @@ function darkenColor(hex, percent) {
 function closeModals() {
   const createModal = document.getElementById('createDeckModal');
   const creationWasOpen = Boolean(createModal && !createModal.classList.contains('hidden'));
+  const addQuestionsModal = document.getElementById('addQuestionsModal');
+  const addQuestionsWasOpen = Boolean(addQuestionsModal && !addQuestionsModal.classList.contains('hidden'));
 
   ['favoritesModal', 'deckInfoModal', 'themeModal', 'createDeckModal', 'addQuestionsModal', 'resetDataModal'].forEach((id) => {
     const modal = document.getElementById(id);
@@ -2655,6 +3013,7 @@ function closeModals() {
 
   // Cancel means cancel: drop partial questions/details/file selection.
   if (creationWasOpen) resetCreationFlow();
+  if (addQuestionsWasOpen) resetQuestionEditor();
 }
 
 function handleCreateDeck(e) {
@@ -2675,9 +3034,7 @@ function handleCreateDeck(e) {
   }
 
   // Check for duplicate deck name, ignoring the deck being edited.
-  const existingDeck = allDecks.find(d =>
-    d.id !== editingDeckId && d.name.toLowerCase().trim() === name.toLowerCase().trim()
-  );
+  const existingDeck = findDeckByName(name, editingDeckId);
   if (existingDeck) {
     showAlertModal({ title: 'Duplicate Deck', message: 'A deck with this name already exists. Please choose a different name.', type: 'warning' });
     return;
@@ -2802,13 +3159,14 @@ function normalizeCsvHeader(value) {
 
 // Check if an identical question already exists in the target deck (same en and tl text).
 // Duplicates across different decks are allowed on purpose.
-function isDuplicateQuestion(en, tl, deck) {
+function isDuplicateQuestion(en, tl, deck, excludeId = null) {
   const normalizedEn = (en || '').trim().toLowerCase();
   const normalizedTl = (tl || '').trim().toLowerCase();
   if (!normalizedEn || !normalizedTl) return false;
   if (!deck || !Array.isArray(deck.questions)) return false;
 
   for (const q of deck.questions) {
+    if (excludeId && q && q.id === excludeId) continue;
     const qEn = (q.en || '').trim().toLowerCase();
     const qTl = (q.tl || '').trim().toLowerCase();
     if (qEn === normalizedEn && qTl === normalizedTl) return true;
@@ -2894,6 +3252,12 @@ function handleDeckDetails(e) {
     return;
   }
 
+  // Same duplicate-name rule as the manual path, including CSV imports.
+  if (findDeckByName(name, editingDeckId)) {
+    showAlertModal({ title: 'Duplicate Deck', message: 'A deck with this name already exists. Please choose a different name.', type: 'warning' });
+    return;
+  }
+
   // Store details temporarily - color selection is the final step
   pendingDeckDetails = { name, description, category };
   colorStepOrigin = 'csvImportStep';
@@ -2937,6 +3301,12 @@ function createPendingCollection() {
   const { name, description, category } = pendingDeckDetails;
   if (!category) {
     showAlertModal({ title: 'Choose a Category', message: 'Please select a category for this collection.', type: 'warning' });
+    return;
+  }
+
+  // Re-check at the final write so a stale pending form can never create a duplicate.
+  if (findDeckByName(name, editingDeckId)) {
+    showAlertModal({ title: 'Duplicate Deck', message: 'A deck with this name already exists. Please choose a different name.', type: 'warning' });
     return;
   }
 
@@ -3060,14 +3430,18 @@ async function deleteSelectedQuestions() {
   const confirmed = await showConfirmModal({
     title: `Delete ${count} ${count === 1 ? 'question' : 'questions'}?`,
     description: `You are about to remove ${count} selected ${count === 1 ? 'question' : 'questions'} from "${currentDeck.name}".`,
-    warning: 'This action cannot be undone.',
+    warning: 'You can undo this for a few seconds.',
     confirmText: 'Delete selected',
     cancelText: 'Cancel',
     isDanger: true,
   });
   if (!confirmed) return;
 
+  const deck = currentDeck;
   const previousQuestions = currentDeck.questions;
+  const removedEntries = previousQuestions
+    .map((question, index) => ({ question, index }))
+    .filter((entry) => selectedIds.has(entry.question.id));
   const nextQuestions = previousQuestions.filter((question) => !selectedIds.has(question.id));
   currentDeck.questions = nextQuestions;
   currentDeck.count = nextQuestions.length;
@@ -3083,13 +3457,57 @@ async function deleteSelectedQuestions() {
   renderCollectionsTab();
   renderDecksList();
   renderQuestionsPreview();
+  refreshCurrentDeckSession(deck);
 
   const countEl = document.getElementById('infoDeckCount');
   if (countEl) {
     countEl.textContent = `${questionCountLabel(currentDeck.count || 0)} in this deck`;
   }
 
-  showToast(`${count} ${count === 1 ? 'question' : 'questions'} deleted.`, 'success');
+  showToast(`${count} ${count === 1 ? 'question' : 'questions'} deleted.`, 'success', 6000, {
+    label: 'Undo',
+    onClick: () => undoQuestionDeletion(deck, removedEntries),
+  });
+}
+
+function undoQuestionDeletion(deck, entries) {
+  if (!deck || !Array.isArray(deck.questions) || !Array.isArray(entries) || entries.length === 0) return;
+  if (!allDecks.some((item) => item.id === deck.id)) return;
+
+  const previousQuestions = deck.questions.slice();
+  const existingIds = new Set(deck.questions.map((question) => question && question.id).filter(Boolean));
+
+  entries
+    .slice()
+    .sort((a, b) => a.index - b.index)
+    .forEach((entry) => {
+      const question = entry && entry.question;
+      if (!question || (question.id && existingIds.has(question.id))) return;
+      const at = Math.max(0, Math.min(Number(entry.index) || 0, deck.questions.length));
+      deck.questions.splice(at, 0, question);
+      if (question.id) existingIds.add(question.id);
+    });
+
+  deck.count = deck.questions.length;
+
+  if (!saveDeckQuestions(deck)) {
+    deck.questions = previousQuestions;
+    deck.count = previousQuestions.length;
+    notifySaveFailure();
+    return;
+  }
+
+  refreshDeckCounts();
+  renderCollectionsTab();
+  renderDecksList();
+  if (currentDeck && currentDeck.id === deck.id) {
+    renderQuestionsPreview();
+    refreshCurrentDeckSession(deck);
+    const countEl = document.getElementById('infoDeckCount');
+    if (countEl) countEl.textContent = `${questionCountLabel(deck.count || 0)} in this deck`;
+  }
+
+  showToast(`Restored ${entries.length} ${entries.length === 1 ? 'question' : 'questions'}.`, 'success');
 }
 
 window.removeQuestion = async function(questionId) {
@@ -3098,7 +3516,7 @@ window.removeQuestion = async function(questionId) {
   const confirmed = await showConfirmModal({
     title: 'Remove this question?',
     description: 'You are about to remove this question from the deck.',
-    warning: 'This action cannot be undone.',
+    warning: 'You can undo this for a few seconds.',
     confirmText: 'Remove',
     cancelText: 'Cancel',
     isDanger: true,
@@ -3106,8 +3524,12 @@ window.removeQuestion = async function(questionId) {
 
   if (!confirmed) return;
 
-  const nextQuestions = currentDeck.questions.filter((q) => q.id !== questionId);
-  const previousQuestions = currentDeck.questions;
+  const deck = currentDeck;
+  const removedIndex = deck.questions.findIndex((q) => q && q.id === questionId);
+  if (removedIndex < 0) return;
+  const removedQuestion = deck.questions[removedIndex];
+  const nextQuestions = deck.questions.filter((q) => q.id !== questionId);
+  const previousQuestions = deck.questions;
   currentDeck.questions = nextQuestions;
   currentDeck.count = nextQuestions.length;
 
@@ -3123,13 +3545,17 @@ window.removeQuestion = async function(questionId) {
   renderCollectionsTab();
   renderDecksList();
   renderQuestionsPreview();
+  refreshCurrentDeckSession(deck);
 
   const countEl = document.getElementById('infoDeckCount');
   if (countEl) {
     countEl.textContent = `${questionCountLabel(currentDeck.count || 0)} in this deck`;
   }
 
-  showToast('Question removed.', 'success');
+  showToast('Question removed.', 'success', 6000, {
+    label: 'Undo',
+    onClick: () => undoQuestionDeletion(deck, [{ question: removedQuestion, index: removedIndex }]),
+  });
 };
 
 function handleAddQuestion(e) {
@@ -3149,10 +3575,43 @@ function handleAddQuestion(e) {
   }
 
   // Only exact duplicates inside the same deck are blocked. The same question
-  // may live in different decks.
-  if (isDuplicateQuestion(en, tl, currentDeck)) {
+  // may live in different decks. While editing, the question being edited is
+  // excluded from the duplicate check.
+  if (isDuplicateQuestion(en, tl, currentDeck, editingQuestionId)) {
     showAlertModal({ title: 'Duplicate Question', message: 'This question already exists in this collection.', type: 'warning' });
-    document.getElementById('addQuestionsForm').reset();
+    return;
+  }
+
+  if (editingQuestionId) {
+    const index = currentDeck.questions.findIndex((question) => question && question.id === editingQuestionId);
+    if (index < 0) {
+      resetQuestionEditor();
+      showAlertModal({ title: 'Question Not Found', message: 'That question is no longer in this collection.', type: 'error' });
+      return;
+    }
+
+    const previous = { ...currentDeck.questions[index] };
+    currentDeck.questions[index] = { ...previous, en, tl };
+
+    if (!saveDeckQuestions(currentDeck)) {
+      currentDeck.questions[index] = previous;
+      notifySaveFailure();
+      return;
+    }
+
+    resetQuestionEditor();
+    refreshDeckCounts();
+    renderCollectionsTab();
+    renderDecksList();
+    renderQuestionsPreview();
+    refreshCurrentDeckSession(currentDeck);
+
+    const infoCountEl = document.getElementById('infoDeckCount');
+    if (infoCountEl && currentDeck) {
+      infoCountEl.textContent = `${questionCountLabel(currentDeck.count || 0)} in this deck`;
+    }
+
+    showToast('Question updated.', 'success');
     return;
   }
 
@@ -3188,8 +3647,42 @@ function handleAddQuestion(e) {
 
   // Update preview
   renderQuestionsPreview();
+  refreshCurrentDeckSession(currentDeck);
 
   showToast(`Question added! Total: ${currentDeck.count} ${currentDeck.count === 1 ? 'question' : 'questions'}`, 'success');
+}
+
+function resetQuestionEditor() {
+  editingQuestionId = null;
+  const form = document.getElementById('addQuestionsForm');
+  if (form) form.reset();
+  const submitBtn = document.getElementById('addQuestionSubmitBtn');
+  if (submitBtn) submitBtn.textContent = 'Add Question';
+  const cancelBtn = document.getElementById('cancelEditQuestionBtn');
+  if (cancelBtn) cancelBtn.classList.add('hidden');
+}
+
+function startEditingQuestion(questionId) {
+  if (!currentDeck || !Array.isArray(currentDeck.questions)) return;
+  const question = currentDeck.questions.find((item) => item && item.id === questionId);
+  if (!question) return;
+
+  editingQuestionId = questionId;
+  const enInput = document.getElementById('addQuestionsEn');
+  const tlInput = document.getElementById('addQuestionsTl');
+  if (enInput) enInput.value = question.en || '';
+  if (tlInput) tlInput.value = question.tl || '';
+
+  const submitBtn = document.getElementById('addQuestionSubmitBtn');
+  if (submitBtn) submitBtn.textContent = 'Save Changes';
+  const cancelBtn = document.getElementById('cancelEditQuestionBtn');
+  if (cancelBtn) cancelBtn.classList.remove('hidden');
+
+  const form = document.getElementById('addQuestionsForm');
+  if (form && typeof form.scrollIntoView === 'function') {
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  if (enInput) enInput.focus({ preventScroll: true });
 }
 
 function renderQuestionsPreview() {
@@ -3209,14 +3702,19 @@ function renderQuestionsPreview() {
         <div class="question-text">${escapeHtml(q.en)}</div>
         <div class="question-text-tl">${escapeHtml(q.tl)}</div>
       </div>
+      <button class="question-edit-btn" data-question-id="${escapeHtml(q.id)}" type="button" aria-label="Edit question"><span class="icon-wrapper" data-icon="pencil"></span></button>
       <button class="question-remove-btn" data-question-id="${escapeHtml(q.id)}" type="button" aria-label="Remove question">&times;</button>
     </div>
   `).join('');
 
   preview.innerHTML = html;
+  renderAllIcons();
 
   preview.querySelectorAll('.question-select-checkbox').forEach((box) => {
     box.addEventListener('change', updateQuestionsSelectionState);
+  });
+  preview.querySelectorAll('.question-edit-btn').forEach((btn) => {
+    btn.addEventListener('click', () => startEditingQuestion(btn.dataset.questionId));
   });
   preview.querySelectorAll('.question-remove-btn').forEach((btn) => {
     btn.addEventListener('click', () => window.removeQuestion(btn.dataset.questionId));
@@ -3234,8 +3732,8 @@ function openAddQuestionsModal() {
   document.getElementById('addQuestionsTitle').textContent = currentDeck.name;
   document.getElementById('addQuestionsModal').classList.remove('hidden');
 
-  // Clear form
-  document.getElementById('addQuestionsForm').reset();
+  // Clear form and any edit state.
+  resetQuestionEditor();
 
   // Show current questions
   renderQuestionsPreview();
@@ -3264,6 +3762,7 @@ function setupPlayScreenListeners() {
 
   if (infoBtn) infoBtn.addEventListener('click', () => {
     if (!currentDeck) return;
+    infoDeckId = currentDeck.id;
     document.getElementById('infoDeckName').textContent = currentDeck.name;
     document.getElementById('infoDeckDescription').textContent = currentDeck.description;
     document.getElementById('infoDeckCount').textContent = `${questionCountLabel(currentDeck.count || 0)} in this deck`;
@@ -3276,6 +3775,7 @@ function setupPlayScreenListeners() {
     }
 
     wireDeckCsvButton(currentDeck);
+    wireDeckImportButton(currentDeck);
 
     // Wire up the Delete Deck button
     const deleteDeckBtn = document.getElementById('deleteDeckBtn');

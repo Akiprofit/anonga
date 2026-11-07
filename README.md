@@ -12,7 +12,7 @@
   <a href="https://github.com/Akiprofit/anonga/releases/latest">
     <img alt="Download the Android APK" src="https://img.shields.io/badge/Download-Android%20APK-163D3A?style=for-the-badge&logo=android&logoColor=white" />
   </a>
-  <img alt="Version 1.6" src="https://img.shields.io/badge/version-1.6-C9846F?style=for-the-badge" />
+  <img alt="Version 1.7" src="https://img.shields.io/badge/version-1.7-C9846F?style=for-the-badge" />
   <img alt="Offline first" src="https://img.shields.io/badge/offline-first-5A7A5C?style=for-the-badge" />
 </p>
 
@@ -37,7 +37,7 @@ The latest signed Android APK is on the
 
 ### Install on Android
 
-1. Download `AnoNga-1.6.apk` from the latest release.
+1. Download `AnoNga-1.7.apk` from the latest release.
 2. Open the downloaded APK.
 3. Allow **Install unknown apps** for the browser or file manager you used.
 4. Tap **Install**.
@@ -87,10 +87,14 @@ to open that collection at the matching card.
 - Create your own collection with a name, description, and category
 - Categories: **Solo**, **Together**, or **Friends**
 - Add questions manually
+- Edit any question's English and Taglish text in place
 - Select one or more questions and delete them together after a confirmation
+- Undo a deleted collection or question for a few seconds
 - Import questions from a CSV file
+- Append questions from a CSV file to an existing collection
 - Choose from **16 collection colors** in a live preview
 - Custom confirmation modal before deleting a collection
+- Resume a collection at the card where you stopped
 - Collections and their questions persist after restarting the app
 
 ### CSV import and export
@@ -111,6 +115,11 @@ inside quoted fields. Duplicates inside one import are skipped. The same
 question may live in more than one collection; an exact duplicate inside the
 same collection is blocked.
 
+Open any collection, choose **Import CSV**, and its questions are appended to
+that collection. Rows that already exist in the collection (same English and
+Taglish text, ignoring case and surrounding spaces) are skipped, and the
+confirmation shows how many will be added and skipped.
+
 Export any collection from its details screen with **Export CSV**. The exported
 file keeps the English question, Taglish question, and reflection columns, and
 opens correctly in Excel and Google Sheets.
@@ -127,6 +136,9 @@ The **YOUR DATA** section in the Collections tab keeps your data portable:
   confirmation before replacing the data on this device.
 - **Reset App Data** deletes local collections, favorites, themes, and added
   questions after you type `DELETE` to confirm. Built-in decks remain.
+
+Resume position is device state, not content: it is not included in backups,
+and it is cleared by **Reset App Data**.
 
 Back up before changing phones or clearing app storage.
 
@@ -266,13 +278,12 @@ android/app/build/outputs/apk/release/app-release.apk
 
 ## Status
 
-**v1.6** — Data persistence release. AnoNga now writes an automatic JSON
-backup to `Documents/AnoNga/anonga-autosave.json` after every change and
-restores it on a fresh install, so collections, questions, favorites, themes,
-language, and handmade questions survive an uninstall and reinstall. A manual
-backup and restore path remains for moving to a new phone. Builds on v1.5's
-card text auto-fit, v1.3's search, bulk question deletion, and
-cross-collection duplicate questions, plus v1.2's JSON backup and restore,
+**v1.7** — Usability release. Collections can now take additional questions
+from a CSV file, question text can be edited in place, a deck resumes at the
+last card you viewed, deleted collections and questions can be undone for a few
+seconds, and duplicate collection names are blocked on both the manual and CSV
+creation paths. Builds on v1.6's automatic backup and restore, v1.5's card text
+auto-fit, v1.3's search and bulk question deletion, plus v1.2's JSON backup,
 per-collection CSV export, and typed-confirmation reset control. The app stays
 local-first and does not require an internet connection for normal use. See
 [`AUDIT_REPORT.md`](AUDIT_REPORT.md) for the confirmed issues, fixes, browser

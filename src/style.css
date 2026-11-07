@@ -91,6 +91,11 @@
   box-sizing: border-box;
 }
 
+/* Utility used across search, toolbars and modal actions. */
+.hidden {
+  display: none !important;
+}
+
 html, body {
   width: 100%;
   height: 100%;
@@ -2120,6 +2125,22 @@ body {
   line-height: 1.4;
 }
 
+.toast-action {
+  flex-shrink: 0;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.toast-action:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
 @keyframes toastIn {
   from {
     opacity: 0;
@@ -3555,4 +3576,34 @@ body {
   justify-content: center;
   font-size: 14px;
   line-height: 1;
+}
+
+.questions-preview .question-edit-btn {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(25, 61, 58, 0.1);
+  color: var(--primary-dark);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.questions-preview .question-edit-btn .icon-wrapper,
+.questions-preview .question-edit-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.question-form-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+.question-form-actions .btn {
+  flex: 1;
 }

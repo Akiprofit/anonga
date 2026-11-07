@@ -275,8 +275,10 @@
           <p id="infoDeckCount" class="deck-count"></p>
           <button id="editDeckBtn" class="btn btn-secondary"><span class="icon-wrapper" data-icon="pencil"></span> Edit Details</button>
           <button id="addQuestionsToDeckBtn" class="btn btn-primary"><span class="icon-wrapper" data-icon="plus"></span> Add Questions</button>
+          <button id="importDeckCsvBtn" class="btn btn-secondary"><span class="icon-wrapper" data-icon="upload"></span> Import CSV</button>
           <button id="exportDeckCsvBtn" class="btn btn-secondary"><span class="icon-wrapper" data-icon="download"></span> Export CSV</button>
           <button id="deleteDeckBtn" class="btn btn-danger"><span class="icon-wrapper" data-icon="trash"></span> Delete Deck</button>
+          <input id="deckCsvFileInput" type="file" accept=".csv,text/csv" hidden>
         </div>
       </div>
     </div>
@@ -499,7 +501,10 @@
             <label for="addQuestionsTl">Question (Taglish)</label>
             <textarea id="addQuestionsTl" class="form-input" placeholder="Tanungin sa Taglish..." required></textarea>
           </div>
-          <button type="submit" class="btn btn-primary">Add Question</button>
+          <div class="question-form-actions">
+            <button type="submit" id="addQuestionSubmitBtn" class="btn btn-primary">Add Question</button>
+            <button type="button" id="cancelEditQuestionBtn" class="btn btn-ghost hidden">Cancel edit</button>
+          </div>
         </form>
         <div id="questionsToolbar" class="questions-toolbar hidden">
           <label class="questions-select-all">

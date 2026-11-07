@@ -635,3 +635,78 @@ Samsung RFCY30E0LRT. Debug-signed v1.6 installed over debug-signed v1.5 with
 Release APK: `AnoNga-1.6.apk`, versionCode 7, signed.
 SHA-256: `51C132EA93C9F5F3E29B1DFD8DE89515DA7007C2A7352816DD7C0C71111F2C62`
 
+## 15. v1.7 usability: CSV append, edit, resume, undo, duplicate names
+
+### Changes
+
+- **Import CSV into an existing collection.** The deck-info screen now has an
+  **Import CSV** button. The import reads the file locally, skips rows that
+  exactly match a question already in that deck (normalized English and
+  Taglish), skips incomplete rows, and shows the add/skip counts before writing.
+  Duplicates in different decks remain allowed.
+- **Edit question text.** Each question in the Add Questions preview has an edit
+  button. Saving updates the same question in place, keeps its id, and excludes
+  that question from the duplicate check. Cancel edit restores the form.
+- **Resume the last card.** Progress is saved per deck in
+  `anonga_session_progress` with the question id, position, and timestamp. Opening
+  a deck returns to the last card and shows a resume toast. Completing or
+  restarting a deck clears its progress. Progress is device state, so it is not
+  included in backups and is cleared by Reset App Data.
+- **Undo delete.** Deleting a collection or a question shows a 6-second **Undo**
+  action in the toast. Collection undo restores the deck, its theme, and its
+  question overrides; question undo restores the removed entries at their
+  original positions. Undo refuses to restore a collection name that has been
+  reused in the meantime.
+- **Duplicate collection names.** One case-insensitive helper, `findDeckByName`,
+  now checks manual creation, CSV details, and the final write. The same check
+  also covers the deck being edited by excluding its own id.
+- **Shared hidden rule.** Added the missing global `.hidden` CSS rule. Search
+  results, the question toolbar, and the new Cancel edit button now hide
+  correctly.
+- **Session refresh fix.** After adding, editing, or removing questions during
+  play, the session order is rebuilt so new cards are reachable and deleted cards
+  do not leave stale indexes.
+
+### Automated
+
+- `npm test`: 23/23 tests pass.
+- `npm run build`: production bundle builds cleanly.
+- Release APK: `versionCode 8`, `versionName 1.7`, minSdk 22, targetSdk 34,
+  signed with the existing `CN=AnoNga` certificate.
+
+### Device verified
+
+Samsung RFCY30E0LRT. Debug-signed v1.7 installed over debug-signed v1.6 with
+`adb install -r`; no data loss. Real data remained 4 collections, 201
+questions, and the `dark-cherry` theme.
+
+- Duplicate collection name: manual create form rejected the existing name with
+  the **Duplicate Deck** alert; deck count stayed 4.
+- Edit question: changed the first question text, verified the stored value, then
+  edited it back to the original text.
+- Resume: opened a 50-question deck, advanced to card 4, went back, and reopened
+  it. It resumed at card 4 of 50 with the resume toast.
+- Undo question delete: deleting the last question changed the deck from 50 to 49
+  and showed **Undo**; tapping Undo restored it to 50 with the same question id.
+- CSV append: imported a two-row file containing one duplicate and one new
+  question. The dialog reported `Add 1 question` and `1 row will be skipped`;
+  after Import the deck grew from 1 to 2 questions and the toast reported
+  `Imported 1 question, skipped 1.` The test question was then removed, restoring
+  the deck to 1 question.
+- Automatic backup: `/sdcard/Documents/AnoNga/anonga-autosave.json` is 49,659
+  bytes with `appVersion 1.7` and the `dark-cherry` theme.
+- No fatal logcat errors.
+- Test resume progress was cleared after verification.
+
+### Not verified
+
+- Release-signed `AnoNga-1.7.apk` on a physical device. The phone has the
+  debug-signed build installed; installing the release build over it would fail
+  the signature check and require uninstalling, which would delete the user's
+  live data.
+- A real uninstall and reinstall, for the same data-loss reason.
+- Reset App Data on a device, because it would erase real data.
+
+Release APK: `AnoNga-1.7.apk`, versionCode 8, signed.
+SHA-256: `124F6E0C4498AF8D856A2B52B54504FF3C7F1AB77AE85334700FA1286F6ED42A`
+
