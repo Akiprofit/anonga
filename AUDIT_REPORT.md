@@ -492,3 +492,45 @@ APK itself was not installed on the device.
 Release APK: `AnoNga-1.3.apk`, versionCode 4, signed.
 SHA-256: `F9EAC87FFEF4195007B3CFA0A09F79254C124356E30259FB7A23BE7B768D6CFC`
 
+---
+
+## 12. v1.4 card font fix
+
+v1.3 added bulk question selection styles that used the global
+`.question-text` selector. Those rules set `font-size: 13px` and overrode the
+card question size, shrinking card text to roughly 15px on a phone.
+
+### Fix
+
+- Scoped the bulk preview styles to `.questions-preview`, so they no longer
+  reach the play card.
+- Removed the `.question-text.is-long` and `.question-text.is-xlong` shrink
+  rules and the `toggleLongText` calls that applied them.
+- Card question text is now fixed at the existing large size for every card,
+  including long questions. No other text sizes changed.
+
+### Automated
+
+- `npm test`: 22/22 tests pass.
+- `npm run build`: production bundle builds cleanly.
+
+### Device verified
+
+Samsung RFCY30E0LRT. Debug-signed v1.4 installed over debug-signed v1.3 with
+`adb install -r`; no data loss.
+
+- Card question computed font: `29.6225px` (was `14.95px` before the fix).
+- Question preview list font remains `14.95px`.
+- Questions of 90, 212, and 355 characters all kept `29.6225px`. Long
+  questions scroll inside the card body instead of shrinking.
+- 4 custom collections, 201 questions, and the `dark-cherry` theme remained.
+- Temporary test collection deleted afterward; real data unchanged.
+- No fatal logcat errors.
+
+### Not verified
+
+- Release-signed `AnoNga-1.4.apk` on a physical Android device.
+
+Release APK: `AnoNga-1.4.apk`, versionCode 5, signed.
+SHA-256: `A5FAC7CF13D9E08241B0C593263A967F379CF2D6A292CFE1890F042414694B24`
+

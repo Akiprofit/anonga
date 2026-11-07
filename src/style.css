@@ -1270,6 +1270,7 @@ body {
 
 .question-text {
   width: 100%;
+  /* Card text is intentionally fixed-size. Do not shrink it for long questions. */
   font-family: var(--c-font);
   font-size: clamp(18px, calc(var(--card-w) * 0.078), 27px);
   line-height: 1.5;
@@ -1278,16 +1279,6 @@ body {
   color: var(--c-ink);
   overflow-wrap: break-word;
   text-wrap: balance;
-}
-
-.question-text.is-long {
-  font-size: clamp(15px, calc(var(--card-w) * 0.062), 21px);
-  line-height: 1.5;
-}
-
-.question-text.is-xlong {
-  font-size: clamp(13px, calc(var(--card-w) * 0.052), 18px);
-  line-height: 1.45;
 }
 
 .card-back .question-text {
@@ -3514,7 +3505,7 @@ body {
   transform: none;
 }
 
-.question-item {
+.questions-preview .question-item {
   display: flex;
   align-items: flex-start;
   gap: var(--spacing-sm);
@@ -3524,32 +3515,32 @@ body {
   border-radius: 4px;
 }
 
-.question-item-content {
+.questions-preview .question-item-content {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-.question-index {
+.questions-preview .question-index {
   font-weight: 600;
   font-size: 12px;
   color: #666;
   margin-bottom: 4px;
 }
 
-.question-text {
+.questions-preview .question-text {
   font-size: 13px;
   margin-bottom: 4px;
   padding-right: 4px;
 }
 
-.question-text-tl {
+.questions-preview .question-text-tl {
   font-size: 13px;
   color: #666;
   font-style: italic;
   padding-right: 4px;
 }
 
-.question-remove-btn {
+.questions-preview .question-remove-btn {
   width: 22px;
   height: 22px;
   flex: 0 0 22px;

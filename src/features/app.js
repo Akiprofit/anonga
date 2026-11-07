@@ -1776,13 +1776,6 @@ function setText(id, value) {
   if (element) element.textContent = value;
 }
 
-function toggleLongText(id, text) {
-  const element = document.getElementById(id);
-  if (!element) return;
-  element.classList.toggle('is-long', text.length > 130);
-  element.classList.toggle('is-xlong', text.length > 220);
-}
-
 function renderCardContent() {
   const total = currentDeckQuestions.length;
   const question = getCurrentQuestion();
@@ -1802,8 +1795,6 @@ function renderCardContent() {
     setText('cardBackCounter', '0 / 0');
     setText('cardLanguage', currentLanguage === 'en' ? 'EN' : 'TL');
     setText('cardBackDeck', currentDeck?.name || 'Deck');
-    toggleLongText('questionText', '');
-    toggleLongText('cardBackText', '');
     updateFavoriteButtonState();
     updatePlayControls();
     return;
@@ -1830,8 +1821,6 @@ function renderCardContent() {
   setText('cardLanguage', currentLanguage === 'en' ? 'EN' : 'TL');
   setText('cardBackDeck', currentDeck?.name || 'Deck');
 
-  toggleLongText('questionText', front);
-  toggleLongText('cardBackText', backText);
   updateFavoriteButtonState();
   updatePlayControls();
 }

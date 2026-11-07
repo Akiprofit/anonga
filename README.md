@@ -12,7 +12,7 @@
   <a href="https://github.com/Akiprofit/anonga/releases/latest">
     <img alt="Download the Android APK" src="https://img.shields.io/badge/Download-Android%20APK-163D3A?style=for-the-badge&logo=android&logoColor=white" />
   </a>
-  <img alt="Version 1.3" src="https://img.shields.io/badge/version-1.3-C9846F?style=for-the-badge" />
+  <img alt="Version 1.4" src="https://img.shields.io/badge/version-1.4-C9846F?style=for-the-badge" />
   <img alt="Offline first" src="https://img.shields.io/badge/offline-first-5A7A5C?style=for-the-badge" />
 </p>
 
@@ -37,7 +37,7 @@ The latest signed Android APK is on the
 
 ### Install on Android
 
-1. Download `AnoNga-1.3.apk` from the latest release.
+1. Download `AnoNga-1.4.apk` from the latest release.
 2. Open the downloaded APK.
 3. Allow **Install unknown apps** for the browser or file manager you used.
 4. Tap **Install**.
@@ -264,11 +264,12 @@ android/app/build/outputs/apk/release/app-release.apk
 
 ## Status
 
-**v1.3** — Search and collection-management release. Adds deck and question
-search, bulk question deletion, and cross-collection duplicate questions.
-Builds on v1.2's JSON backup and restore, per-collection CSV export, and
-typed-confirmation reset control. The app stays local-first and does not require
-an internet connection for normal use. See
+**v1.4** — Card readability release. Restores the large card question font and
+keeps it fixed for every card, including long questions. Other text sizes are
+unchanged. Builds on v1.3's search, bulk question deletion, and
+cross-collection duplicate questions, plus v1.2's JSON backup and restore,
+per-collection CSV export, and typed-confirmation reset control. The app stays
+local-first and does not require an internet connection for normal use. See
 [`AUDIT_REPORT.md`](AUDIT_REPORT.md) for the confirmed issues, fixes, browser
 test results, and the remaining on-device checks.
 
