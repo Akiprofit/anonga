@@ -9,6 +9,13 @@ import {
   themeForCollection,
   isValidTheme,
 } from './cardThemes.js';
+import {
+  buildBackup,
+  parseBackup,
+  backupFilename,
+  questionsToCsv,
+  csvFilename,
+} from './dataTransfer.js';
 
 // Lucide icon SVG data
 const iconSvgs = {
@@ -18,6 +25,7 @@ const iconSvgs = {
   'pencil': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
   'plus': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
   'download': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+  'upload': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
   'info': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
   'arrow-left': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>',
   'arrow-right': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>',
@@ -103,6 +111,10 @@ const IMPORTED_DECKS_KEY = 'anonga_imported_decks';
 const HANDMADE_KEY = 'anonga_handmade_questions';
 const DECK_OVERRIDES_KEY = 'anonga_deck_questions';
 const DECK_THEMES_KEY = 'anonga_deck_themes';
+const LANGUAGE_KEY = 'anonga_language';
+const FAVORITES_KEY = 'anonga_favorites';
+const LEGACY_CUSTOM_QUESTIONS_KEY = 'anonga_custom_questions';
+const APP_VERSION = '1.2';
 
 /* ============================================================================
    Shared helpers
@@ -533,6 +545,33 @@ function setupEventListeners() {
   const createBtn = document.getElementById('createDeckBtn');
   if (createBtn) createBtn.addEventListener('click', openCreateDeckModal);
 
+  // Data safety: backup, restore and reset.
+  const backupBtn = document.getElementById('backupDataBtn');
+  if (backupBtn) backupBtn.addEventListener('click', handleBackupData);
+
+  const restoreBtn = document.getElementById('restoreDataBtn');
+  const restoreInput = document.getElementById('restoreFileInput');
+  if (restoreBtn && restoreInput) {
+    restoreBtn.addEventListener('click', () => {
+      restoreInput.value = '';
+      restoreInput.click();
+    });
+    restoreInput.addEventListener('change', handleRestoreFile);
+  }
+
+  const resetBtn = document.getElementById('resetDataBtn');
+  if (resetBtn) resetBtn.addEventListener('click', openResetDataModal);
+
+  const resetCancelBtn = document.getElementById('resetCancelBtn');
+  if (resetCancelBtn) resetCancelBtn.addEventListener('click', closeModals);
+
+  const resetConfirmInput = document.getElementById('resetConfirmInput');
+  const resetConfirmBtn = document.getElementById('resetConfirmBtn');
+  if (resetConfirmInput && resetConfirmBtn) {
+    resetConfirmInput.addEventListener('input', updateResetConfirmState);
+    resetConfirmBtn.addEventListener('click', resetAllData);
+  }
+
   // Bind Edit Details once. Previously it was assigned each time the info modal
   // opened, which left the button dead if that assignment was ever skipped.
   const editDetailsBtn = document.getElementById('editDeckBtn');
@@ -866,6 +905,281 @@ function showAlertModal({ title, message, type = 'info' }) {
   });
 }
 
+/* ============================================================================
+   BACKUP, RESTORE, CSV EXPORT AND RESET
+   ============================================================================ */
+
+function isNativePlatform() {
+  return Boolean(
+    window.Capacitor
+    && typeof window.Capacitor.isNativePlatform === 'function'
+    && window.Capacitor.isNativePlatform(),
+  );
+}
+
+// Native builds share the file through Android's share sheet. Browsers get a
+// normal download. Both paths use the same generated text.
+async function saveTextFile(filename, text, mimeType, title) {
+  if (isNativePlatform()) {
+    try {
+      const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
+      const { Share } = await import('@capacitor/share');
+
+      const file = await Filesystem.writeFile({
+        path: filename,
+        data: text,
+        directory: Directory.Cache,
+        encoding: Encoding.UTF8,
+        recursive: true,
+      });
+
+      let canShare = true;
+      try {
+        const availability = await Share.canShare();
+        canShare = Boolean(availability && availability.value);
+      } catch {
+        canShare = false;
+      }
+
+      if (!canShare) {
+        await showAlertModal({
+          title: 'File Ready',
+          message: `Saved ${filename} in the app cache, but this device cannot open a share sheet.`,
+          type: 'info',
+        });
+        return false;
+      }
+
+      await Share.share({
+        title,
+        text: title,
+        files: [file.uri],
+        dialogTitle: title,
+      });
+      return true;
+    } catch (error) {
+      const message = String(error && error.message ? error.message : error);
+      // Closing the share sheet is not a failure.
+      if (/cancel/i.test(message)) return false;
+      console.error('Could not export file:', error);
+      showAlertModal({
+        title: 'Export Failed',
+        message: 'AnoNga could not create the file. Please try again.',
+        type: 'error',
+      });
+      return false;
+    }
+  }
+
+  try {
+    const blob = new Blob([text], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+    showToast(`Saved ${filename}.`, 'success');
+    return true;
+  } catch (error) {
+    console.error('Could not download file:', error);
+    showAlertModal({
+      title: 'Export Failed',
+      message: 'The browser could not save the file. Please try again.',
+      type: 'error',
+    });
+    return false;
+  }
+}
+
+function collectBackupData() {
+  return buildBackup({
+    language: getLanguage() || 'en',
+    favorites: getFavorites(),
+    customDecks: readJsonArray(CUSTOM_DECKS_KEY),
+    importedDecks: readJsonArray(IMPORTED_DECKS_KEY),
+    handmadeQuestions: readJsonArray(HANDMADE_KEY),
+    deckOverrides: readJson(DECK_OVERRIDES_KEY, {}),
+    deckThemes: readJson(DECK_THEMES_KEY, {}),
+    appVersion: APP_VERSION,
+  });
+}
+
+async function handleBackupData() {
+  try {
+    const backup = collectBackupData();
+    const json = JSON.stringify(backup, null, 2);
+    await saveTextFile(backupFilename(), json, 'application/json', 'AnoNga backup');
+  } catch (error) {
+    console.error('Backup failed:', error);
+    showAlertModal({
+      title: 'Backup Failed',
+      message: 'AnoNga could not prepare the backup. Please try again.',
+      type: 'error',
+    });
+  }
+}
+
+function applyBackup(backup) {
+  const data = backup.data;
+  const values = {
+    [LANGUAGE_KEY]: data.language === 'tl' ? 'tl' : 'en',
+    [FAVORITES_KEY]: JSON.stringify(data.favorites),
+    [LEGACY_CUSTOM_QUESTIONS_KEY]: '[]',
+    [CUSTOM_DECKS_KEY]: JSON.stringify(data.customDecks),
+    [IMPORTED_DECKS_KEY]: JSON.stringify(data.importedDecks),
+    [HANDMADE_KEY]: JSON.stringify(data.handmadeQuestions),
+    [DECK_OVERRIDES_KEY]: JSON.stringify(data.deckOverrides),
+    [DECK_THEMES_KEY]: JSON.stringify(data.deckThemes),
+  };
+
+  // Keep a snapshot so a mid-write failure cannot leave half a backup applied.
+  const previous = {};
+  Object.keys(values).forEach((key) => {
+    previous[key] = localStorage.getItem(key);
+  });
+
+  try {
+    Object.keys(values).forEach((key) => {
+      localStorage.setItem(key, values[key]);
+    });
+    return true;
+  } catch (error) {
+    console.error('Restore write failed:', error);
+    Object.keys(previous).forEach((key) => {
+      try {
+        if (previous[key] === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, previous[key]);
+      } catch {
+        // Best-effort rollback.
+      }
+    });
+    notifySaveFailure();
+    return false;
+  }
+}
+
+function handleRestoreFile(event) {
+  const input = event.target;
+  const file = input.files && input.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const result = parseBackup(String(reader.result || ''));
+    if (!result.ok) {
+      showAlertModal({
+        title: 'Could Not Restore',
+        message: result.error,
+        type: 'error',
+      });
+      input.value = '';
+      return;
+    }
+
+    const summary = result.summary;
+    const exportedAt = result.backup.exportedAt
+      ? new Date(result.backup.exportedAt).toLocaleString()
+      : 'an unknown date';
+
+    const confirmed = await showConfirmModal({
+      title: 'Restore this backup?',
+      description: `Backup from ${exportedAt}. ${summary.customDecks} custom collections, ${summary.importedDecks} imported collections, ${summary.handmadeQuestions} handmade questions, ${summary.favorites} favorites.`,
+      warning: 'This replaces every collection, favorite, theme, and added question on this device. Your current data will be overwritten.',
+      confirmText: 'Restore backup',
+      cancelText: 'Cancel',
+      isDanger: true,
+    });
+
+    input.value = '';
+
+    if (!confirmed) return;
+    if (applyBackup(result.backup)) {
+      window.location.reload();
+    }
+  };
+  reader.onerror = () => {
+    showAlertModal({
+      title: 'Could Not Read File',
+      message: 'AnoNga could not read that file. Please try another backup.',
+      type: 'error',
+    });
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function openResetDataModal() {
+  const modal = document.getElementById('resetDataModal');
+  const input = document.getElementById('resetConfirmInput');
+  const confirmBtn = document.getElementById('resetConfirmBtn');
+  if (!modal || !input || !confirmBtn) return;
+
+  input.value = '';
+  confirmBtn.disabled = true;
+  modal.classList.remove('hidden');
+  window.setTimeout(() => input.focus(), 50);
+}
+
+function updateResetConfirmState() {
+  const input = document.getElementById('resetConfirmInput');
+  const confirmBtn = document.getElementById('resetConfirmBtn');
+  if (!input || !confirmBtn) return;
+  confirmBtn.disabled = input.value.trim().toUpperCase() !== 'DELETE';
+}
+
+function resetAllData() {
+  const input = document.getElementById('resetConfirmInput');
+  if (!input || input.value.trim().toUpperCase() !== 'DELETE') return;
+
+  try {
+    const keys = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key && key.startsWith('anonga_')) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
+    window.location.reload();
+  } catch (error) {
+    console.error('Reset failed:', error);
+    showAlertModal({
+      title: 'Reset Failed',
+      message: 'AnoNga could not clear device storage. Please try again.',
+      type: 'error',
+    });
+  }
+}
+
+async function exportDeckCsv(deck) {
+  if (!deck || !Array.isArray(deck.questions) || deck.questions.length === 0) {
+    showAlertModal({
+      title: 'Nothing to Export',
+      message: 'This collection has no questions yet.',
+      type: 'warning',
+    });
+    return;
+  }
+
+  await saveTextFile(
+    csvFilename(deck.name),
+    questionsToCsv(deck.questions),
+    'text/csv',
+    `${deck.name} CSV`,
+  );
+}
+
+function wireDeckCsvButton(deck) {
+  const btn = document.getElementById('exportDeckCsvBtn');
+  if (!btn) return;
+
+  const count = deck && Array.isArray(deck.questions) ? deck.questions.length : 0;
+  btn.disabled = count === 0;
+  btn.onclick = () => exportDeckCsv(deck);
+}
+
 // Override native alert and confirm with custom implementations
 // (Keeps backward compat for any remaining calls)
 const _nativeAlert = window.alert;
@@ -1112,6 +1426,8 @@ window.viewDeckDetails = function(deckId) {
         openAddQuestionsModal();
       };
     }
+
+    wireDeckCsvButton(deck);
 
     const deleteDeckBtn = document.getElementById('deleteDeckBtn');
     if (deleteDeckBtn) {
@@ -1937,7 +2253,7 @@ function closeModals() {
   const createModal = document.getElementById('createDeckModal');
   const creationWasOpen = Boolean(createModal && !createModal.classList.contains('hidden'));
 
-  ['favoritesModal', 'deckInfoModal', 'themeModal', 'createDeckModal', 'addQuestionsModal'].forEach((id) => {
+  ['favoritesModal', 'deckInfoModal', 'themeModal', 'createDeckModal', 'addQuestionsModal', 'resetDataModal'].forEach((id) => {
     const modal = document.getElementById(id);
     if (modal) modal.classList.add('hidden');
   });
@@ -2488,6 +2804,8 @@ function setupPlayScreenListeners() {
     if (addQuestionsBtn) {
       addQuestionsBtn.onclick = openAddQuestionsModal;
     }
+
+    wireDeckCsvButton(currentDeck);
 
     // Wire up the Delete Deck button
     const deleteDeckBtn = document.getElementById('deleteDeckBtn');

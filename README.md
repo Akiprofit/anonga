@@ -12,7 +12,7 @@
   <a href="https://github.com/Akiprofit/anonga/releases/latest">
     <img alt="Download the Android APK" src="https://img.shields.io/badge/Download-Android%20APK-163D3A?style=for-the-badge&logo=android&logoColor=white" />
   </a>
-  <img alt="Version 1.1" src="https://img.shields.io/badge/version-1.1-C9846F?style=for-the-badge" />
+  <img alt="Version 1.2" src="https://img.shields.io/badge/version-1.2-C9846F?style=for-the-badge" />
   <img alt="Offline first" src="https://img.shields.io/badge/offline-first-5A7A5C?style=for-the-badge" />
 </p>
 
@@ -37,7 +37,7 @@ The latest signed Android APK is on the
 
 ### Install on Android
 
-1. Download `AnoNga-1.1.apk` from the latest release.
+1. Download `AnoNga-1.2.apk` from the latest release.
 2. Open the downloaded APK.
 3. Allow **Install unknown apps** for the browser or file manager you used.
 4. Tap **Install**.
@@ -84,7 +84,7 @@ time with the **EN / TL** button.
 - Custom confirmation modal before deleting a collection
 - Collections and their questions persist after restarting the app
 
-### CSV import
+### CSV import and export
 
 Use a simple two-column CSV:
 
@@ -99,6 +99,25 @@ A ready-to-use file is included at
 
 The importer supports quoted fields, commas inside questions, and line breaks
 inside quoted fields. Duplicate questions are skipped.
+
+Export any collection from its details screen with **Export CSV**. The exported
+file keeps the English question, Taglish question, and reflection columns, and
+opens correctly in Excel and Google Sheets.
+
+### Backup, restore, and reset
+
+The **YOUR DATA** section in the Collections tab keeps your data portable:
+
+- **Back Up Data** saves a JSON backup of your language, favorites, custom and
+  imported collections, handmade questions, edited questions, and deck themes.
+  On Android the backup opens in the share sheet so you can save it to Files,
+  Drive, or send it to yourself.
+- **Restore Backup** reads a backup file, shows what it contains, and asks for
+  confirmation before replacing the data on this device.
+- **Reset App Data** deletes local collections, favorites, themes, and added
+  questions after you type `DELETE` to confirm. Built-in decks remain.
+
+Back up before changing phones or clearing app storage.
 
 ### Card themes
 
@@ -136,7 +155,7 @@ Themes are applied per deck and remembered between sessions.
 - **Capacitor 6** for the Android wrapper
 - **Android SDK 34** (`minSdk 22`)
 - Local storage for persistence
-- `@capacitor/filesystem` for in-app file access
+- `@capacitor/filesystem` and `@capacitor/share` for native backup and CSV export
 
 ---
 
@@ -222,6 +241,7 @@ android/app/build/outputs/apk/release/app-release.apk
 │   ├── features/
 │   │   ├── app.js              # Sessions, collections, import, themes, dialogs
 │   │   ├── cardThemes.js       # Card theme definitions and persistence
+│   │   ├── dataTransfer.js     # Backup, restore, and CSV export helpers
 │   │   └── storage.js          # Local storage helpers
 │   ├── data/questions.js       # 300 built-in English/Taglish questions
 │   ├── style.css               # Layout, themes, modals, responsive styles
@@ -235,8 +255,9 @@ android/app/build/outputs/apk/release/app-release.apk
 
 ## Status
 
-**v1.1** — Audit and bug-fix release. The app is local-first and does not
-require an internet connection for normal use. See
+**v1.2** — Data-safety release. Adds JSON backup and restore, per-collection CSV
+export, and a typed-confirmation reset control. The app stays local-first and
+does not require an internet connection for normal use. See
 [`AUDIT_REPORT.md`](AUDIT_REPORT.md) for the confirmed issues, fixes, browser
 test results, and the remaining on-device checks.
 

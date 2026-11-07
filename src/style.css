@@ -3300,3 +3300,53 @@ body {
 .play-main {
   padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
 }
+
+/* ----------------------------------------------------------------------------
+   Data safety: backup, restore and reset
+   ---------------------------------------------------------------------------- */
+
+.data-section {
+  border-top: 1px solid var(--light-warm-border, #E4E1DA);
+  padding-top: var(--spacing-lg);
+}
+
+.data-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm);
+}
+
+.data-actions .btn {
+  width: 100%;
+  justify-content: center;
+  font-size: 14px;
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.data-reset-btn {
+  width: 100%;
+  margin-top: var(--spacing-md);
+  font-size: 14px;
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.reset-warning {
+  font-size: 14px;
+  line-height: var(--line-height-relaxed);
+  color: var(--text-dark);
+  margin-bottom: var(--spacing-sm);
+}
+
+.reset-hint {
+  font-size: 13px;
+  line-height: var(--line-height-relaxed);
+  color: #777;
+  font-style: italic;
+  margin-bottom: var(--spacing-md);
+}
+
+#resetConfirmBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}

@@ -32,6 +32,9 @@ android/keystore.properties
 android/*.jks
 android/*.keystore
 
+# Release artifacts
+*.apk
+
 # Source artwork and throwaway test data (repo uses docs/icon.png)
 src/anonga-logo.png
 samples/test-deck.csv
