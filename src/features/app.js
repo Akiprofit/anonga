@@ -430,6 +430,14 @@ export function initApp() {
     setupPlayScreenListeners();
     setupAndroidBackButton();
 
+    window.addEventListener('resize', scheduleCardTextFit);
+    window.addEventListener('orientationchange', () => {
+      setTimeout(scheduleCardTextFit, 150);
+    });
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(scheduleCardTextFit);
+    }
+
     // Render icons
     renderAllIcons();
 
@@ -1776,6 +1784,44 @@ function setText(id, value) {
   if (element) element.textContent = value;
 }
 
+// Shrink card question text only as much as needed so the full question fits.
+// Short questions keep the large CSS size; long questions scale down instead of
+// being clipped or scrolled out of view.
+function fitCardQuestionText() {
+  ['questionText', 'cardBackText'].forEach((id) => {
+    const element = document.getElementById(id);
+    if (!element) return;
+    const body = element.closest('.card-body');
+    if (!body) return;
+
+    element.style.fontSize = '';
+    const maxSize = parseFloat(getComputedStyle(element).fontSize) || 27;
+    const minSize = 12;
+    element.style.fontSize = `${maxSize}px`;
+
+    if (body.scrollHeight <= body.clientHeight + 1) return;
+
+    let low = minSize;
+    let high = maxSize;
+    let best = minSize;
+    for (let i = 0; i < 12; i += 1) {
+      const mid = (low + high) / 2;
+      element.style.fontSize = `${mid}px`;
+      if (body.scrollHeight <= body.clientHeight + 1) {
+        best = mid;
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+    element.style.fontSize = `${best}px`;
+  });
+}
+
+function scheduleCardTextFit() {
+  requestAnimationFrame(() => fitCardQuestionText());
+}
+
 function renderCardContent() {
   const total = currentDeckQuestions.length;
   const question = getCurrentQuestion();
@@ -1797,6 +1843,7 @@ function renderCardContent() {
     setText('cardBackDeck', currentDeck?.name || 'Deck');
     updateFavoriteButtonState();
     updatePlayControls();
+    scheduleCardTextFit();
     return;
   }
 
@@ -1823,6 +1870,7 @@ function renderCardContent() {
 
   updateFavoriteButtonState();
   updatePlayControls();
+  scheduleCardTextFit();
 }
 
 function updateFavoriteButtonState() {

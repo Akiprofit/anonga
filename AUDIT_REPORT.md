@@ -534,3 +534,45 @@ Samsung RFCY30E0LRT. Debug-signed v1.4 installed over debug-signed v1.3 with
 Release APK: `AnoNga-1.4.apk`, versionCode 5, signed.
 SHA-256: `A5FAC7CF13D9E08241B0C593263A967F379CF2D6A292CFE1890F042414694B24`
 
+---
+
+## 13. v1.5 card text auto-fit
+
+v1.4 kept the card font fixed at the large size. Very long questions then
+overflowed the card and could not be read in full without scrolling inside the
+card.
+
+### Fix
+
+- Added `fitCardQuestionText()` in `src/features/app.js`.
+- Card question text starts at the existing large CSS size.
+- If the question overflows the card body, the font is reduced with a binary
+  search only as much as needed for the full text to fit.
+- The minimum fitted size is `12px`; short questions keep the large size.
+- The fit runs after each card render, after fonts load, and on resize or
+  orientation change.
+- No other text sizes changed.
+
+### Automated
+
+- `npm test`: 22/22 tests pass.
+- `npm run build`: production bundle builds cleanly.
+
+### Device verified
+
+Samsung RFCY30E0LRT. Debug-signed v1.5 installed over debug-signed v1.4 with
+`adb install -r`; no data loss.
+
+- Short card questions kept the large `29.6225px` size.
+- Long questions auto-fit and display in full inside the card.
+- 4 custom collections, 201 questions, and the `dark-cherry` theme remained.
+- Temporary test collection deleted afterward; real data unchanged.
+- No fatal logcat errors.
+
+### Not verified
+
+- Release-signed `AnoNga-1.5.apk` on a physical Android device.
+
+Release APK: `AnoNga-1.5.apk`, versionCode 6, signed.
+SHA-256: `50D44F7AD0042193C3FA1098DAE7EFBE8F9076CC3C203AF15E0916CD370E0839`
+
