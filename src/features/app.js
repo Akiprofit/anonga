@@ -1,4 +1,5 @@
 import { App as CapacitorApp } from '@capacitor/app';
+import { registerPlugin } from '@capacitor/core';
 import { initStorage, getLanguage, setLanguage, getFavorites, addFavorite, removeFavorite } from './storage.js';
 import { defaultQuestions } from '../data/questions.js';
 import {
@@ -117,7 +118,7 @@ const LANGUAGE_KEY = 'anonga_language';
 const FAVORITES_KEY = 'anonga_favorites';
 const LEGACY_CUSTOM_QUESTIONS_KEY = 'anonga_custom_questions';
 const SESSION_PROGRESS_KEY = 'anonga_session_progress';
-const APP_VERSION = '1.7';
+const APP_VERSION = '1.8';
 const AUTO_BACKUP_PATH = 'AnoNga/anonga-autosave.json';
 const AUTO_RESTORE_MARKER = 'anonga_autorestore_checked';
 
@@ -127,6 +128,11 @@ let autoBackupTimer = null;
 let autoBackupInFlight = false;
 let autoBackupSuppressed = false;
 let autoRestoreNotice = null;
+let autoRestorePendingAccess = false;
+let autoBackupBlockedByAccess = false;
+let storageAccessPrompted = false;
+
+const StorageAccess = registerPlugin('StorageAccess');
 
 /* ============================================================================
    Shared helpers
@@ -568,6 +574,7 @@ export async function initApp() {
     await setupAutoBackupListeners();
     showAutoRestoreNotice();
     scheduleAutoBackup();
+    window.setTimeout(maybePromptStorageAccess, 500);
 
     console.log('App initialized successfully');
   } catch (error) {
@@ -1206,8 +1213,45 @@ async function ensurePublicStoragePermission(Filesystem) {
   }
 }
 
+// Android 11+ blocks direct file access to Documents without "All files
+// access". The native plugin reports and requests it.
+async function hasStorageAccess() {
+  if (!isNativePlatform()) return true;
+  try {
+    const result = await StorageAccess.isGranted();
+    return Boolean(result && result.granted);
+  } catch {
+    return true;
+  }
+}
+
+async function requestStorageAccess() {
+  if (!isNativePlatform()) return;
+  try {
+    await StorageAccess.request();
+  } catch (error) {
+    console.warn('Could not open file access settings:', error);
+  }
+}
+
+// True when this install already has user data, so a stale shared backup must
+// never overwrite it.
+function hasLocalUserData() {
+  return (
+    readJsonArray(CUSTOM_DECKS_KEY).length > 0
+    || readJsonArray(IMPORTED_DECKS_KEY).length > 0
+    || readJsonArray(HANDMADE_KEY).length > 0
+    || readJsonArray(FAVORITES_KEY).length > 0
+  );
+}
+
 async function writeAutoBackupText(text) {
   if (!isNativePlatform()) return false;
+
+  if (!(await hasStorageAccess())) {
+    autoBackupBlockedByAccess = true;
+    return false;
+  }
 
   try {
     const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
@@ -1219,8 +1263,10 @@ async function writeAutoBackupText(text) {
       encoding: Encoding.UTF8,
       recursive: true,
     });
+    autoBackupBlockedByAccess = false;
     return true;
   } catch (error) {
+    autoBackupBlockedByAccess = true;
     console.warn('Automatic backup failed:', error);
     return false;
   }
@@ -1260,6 +1306,18 @@ async function flushAutoBackup() {
 // apply it before the app loads any decks.
 async function restoreAutoBackupIfNeeded() {
   if (!isNativePlatform() || localStorage.getItem(AUTO_RESTORE_MARKER)) return;
+
+  // Never let an old shared backup replace data this install already has.
+  if (hasLocalUserData()) {
+    localStorage.setItem(AUTO_RESTORE_MARKER, '1');
+    return;
+  }
+
+  if (!(await hasStorageAccess())) {
+    autoRestorePendingAccess = true;
+    autoBackupBlockedByAccess = true;
+    return;
+  }
 
   try {
     const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
@@ -1311,6 +1369,26 @@ function showAutoRestoreNotice() {
   );
 }
 
+// Android 11+ needs "All files access" before the app can read or write the
+// automatic backup in Documents. Ask once per session, with a way to fix it.
+async function maybePromptStorageAccess() {
+  if (!isNativePlatform() || storageAccessPrompted) return;
+  if (await hasStorageAccess()) return;
+
+  storageAccessPrompted = true;
+  autoBackupBlockedByAccess = true;
+  const confirmed = await showConfirmModal({
+    title: 'Allow file access?',
+    description: 'AnoNga keeps its automatic backup in Documents/AnoNga. Android needs "All files access" for that folder, and to restore the backup after a reinstall.',
+    warning: 'Without it, automatic backup and automatic restore stay off. Back Up Data and Restore Backup still work.',
+    confirmText: 'Open settings',
+    cancelText: 'Not now',
+    isDanger: false,
+  });
+
+  if (confirmed) await requestStorageAccess();
+}
+
 async function setupAutoBackupListeners() {
   window.addEventListener('anonga:data-changed', scheduleAutoBackup);
 
@@ -1318,8 +1396,24 @@ async function setupAutoBackupListeners() {
 
   window.addEventListener('pagehide', flushAutoBackup);
   try {
-    await CapacitorApp.addListener('appStateChange', ({ isActive }) => {
-      if (!isActive) flushAutoBackup();
+    await CapacitorApp.addListener('appStateChange', async ({ isActive }) => {
+      if (!isActive) {
+        flushAutoBackup();
+        return;
+      }
+
+      if (!(await hasStorageAccess())) return;
+
+      // Returning from the settings screen with access granted: restore a
+      // pending backup from scratch, or catch up on the automatic backup.
+      if (autoRestorePendingAccess) {
+        window.location.reload();
+        return;
+      }
+      if (autoBackupBlockedByAccess) {
+        autoBackupBlockedByAccess = false;
+        scheduleAutoBackup();
+      }
     });
   } catch (error) {
     console.warn('Could not attach automatic backup listener:', error);
@@ -1416,6 +1510,8 @@ function handleRestoreFile(event) {
 
     if (!confirmed) return;
     if (applyBackup(result.backup)) {
+      // The device now has this data; never let an older shared backup replace it.
+      localStorage.setItem(AUTO_RESTORE_MARKER, '1');
       window.location.reload();
     }
   };

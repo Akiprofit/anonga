@@ -752,3 +752,73 @@ restarting the app did not update it.
 Release APK: `AnoNga-1.7.apk`, versionCode 8, signed.
 SHA-256: `124F6E0C4498AF8D856A2B52B54504FF3C7F1AB77AE85334700FA1286F6ED42A`
 
+## 16. v1.8 storage access: automatic backup and restore on Android 11+
+
+### Cause
+
+The Capacitor Filesystem plugin reads and writes `Documents/AnoNga` through the
+direct file API. On Android 11 and newer with `targetSdk 34`, that path needs
+`MANAGE_EXTERNAL_STORAGE` ("All files access"). The manifest declared
+`READ_MEDIA_DOCUMENTS` but never requested it, and `requestLegacyExternalStorage`
+is ignored on these versions. On the test phone (Android 17, SDK 37) every write
+was denied, so the automatic backup stayed stale and the automatic restore was
+skipped. The failure was only logged to the WebView console, which release
+builds do not expose.
+
+### Changes
+
+- **Native storage-access plugin.** `StorageAccessPlugin.java` reports whether
+  the app has all-files access and opens the system
+  `ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION` screen for AnoNga. It is
+  registered from `MainActivity`.
+- **Permission declared.** `AndroidManifest.xml` now declares
+  `MANAGE_EXTERNAL_STORAGE`.
+- **In-app prompt.** On Android 11+, if access is missing, the app shows its own
+  **Allow file access?** modal after the home screen renders. **Open settings**
+  jumps to the system toggle; **Not now** dismisses it for the session. No native
+  dialog is used.
+- **Retry on return.** When the app comes back to the foreground with access
+  granted, it restores a pending backup (page reload) or writes the automatic
+  backup immediately.
+- **Stale-backup guard.** Automatic restore now runs only when this install has
+  no user data yet, and the manual **Restore Backup** flow sets the restore
+  marker. An old shared backup can no longer overwrite newer local data.
+- **Version** `versionCode 9`, `versionName 1.8`.
+
+### Automated
+
+- `npm test`: 23/23 tests pass.
+- `npm run build`: production bundle builds cleanly.
+- Release APK signed with the existing `CN=AnoNga` certificate.
+
+### Device verified
+
+Samsung RFCY30E0LRT, Android 17 (SDK 37). Installed over v1.7 with the same
+release signature; real data was kept.
+
+- Upgrade launch showed the **Allow file access?** modal. **Open settings**
+  opened **All files access** for `AnoNga? Version 1.8`.
+- After allowing access, the automatic backup was written immediately:
+  `/sdcard/Documents/AnoNga/anonga-autosave.json` became 49,659 bytes with
+  `appVersion 1.8`, 4 collections, 201 questions, `dark-cherry`, 0 favorites.
+- Favorite toggle test: saving a favorite rewrote the backup (49,877 bytes);
+  removing it rewrote it again to 49,659 bytes with 0 favorites.
+- Fresh-install restore test: the v1.8 APK was uninstalled, then installed
+  again. The first launch showed the access modal; after granting access, the
+  app restored the backup automatically and showed the 4 collections with 201
+  questions and the `dark-cherry` theme. The **Restore Backup** picker was not
+  used.
+- Relaunch with access already granted: no modal, data intact, no fatal logcat
+  errors.
+- Backups kept during testing: `Documents/AnoNga/anonga-autosave.json`,
+  `Download/anonga-autosave-before-1.8-test.json`, and the PC copies.
+
+### Not verified
+
+- Reset App Data on a device, because it would erase real data.
+- Devices below Android 11, where the access prompt is skipped by design.
+- The system settings screen wording on other Android versions.
+
+Release APK: `AnoNga-1.8.apk`, versionCode 9, signed.
+SHA-256: `E66DFE3697717AE19E7BAB708A6503C482737F33DE86C42EA838071348162E92`
+
