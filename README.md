@@ -12,7 +12,7 @@
   <a href="https://github.com/Akiprofit/anonga/releases/latest">
     <img alt="Download the Android APK" src="https://img.shields.io/badge/Download-Android%20APK-163D3A?style=for-the-badge&logo=android&logoColor=white" />
   </a>
-  <img alt="Version 1.9" src="https://img.shields.io/badge/version-1.9-C9846F?style=for-the-badge" />
+  <img alt="Version 1.10" src="https://img.shields.io/badge/version-1.10-C9846F?style=for-the-badge" />
   <img alt="Offline first" src="https://img.shields.io/badge/offline-first-5A7A5C?style=for-the-badge" />
 </p>
 
@@ -37,7 +37,7 @@ The latest signed Android APK is on the
 
 ### Install on Android
 
-1. Download `AnoNga-1.9.apk` from the latest release.
+1. Download `AnoNga-1.10.apk` from the latest release.
 2. Open the downloaded APK.
 3. Allow **Install unknown apps** for the browser or file manager you used.
 4. Tap **Install**.
@@ -77,6 +77,18 @@ time with the **EN / TL** button.
 - Swipe left or right to move through questions
 - Progress counter and completion screen
 - Favorites for questions worth coming back to
+
+### Settings
+
+Tap the gear in the header.
+
+- **Appearance:** Light, Dark, or System (follows the phone)
+- **Card language:** English or Taglish as the default card side
+- **Shuffle when a deck opens:** start every session in a random order
+- **Resume where you stopped:** reopen a deck at the last card you saw
+
+Settings are stored on the device and are not part of the backup. Backup,
+restore, and reset stay in the Collections tab.
 
 ### Search decks and questions
 
@@ -290,12 +302,11 @@ android/app/build/outputs/apk/release/app-release.apk
 
 ## Status
 
-**v1.9** — Collection controls. **Mix Decks** plays two or more collections as
-one shuffled session without touching resume points. Collection details can be
-edited after creation, questions can be reordered with up/down buttons, and
-selected questions can be moved to another collection with duplicate checks.
-Builds on v1.8's Android 11+ storage-access fix, v1.7's CSV append, question
-editing, resume, and undo, v1.6's automatic backup and restore, v1.5's card text
+**v1.10** — Settings and dark mode. A gear in the header opens Settings with
+**Light / Dark / System** appearance, default card language, shuffle-on-open,
+and resume-on-open. Builds on v1.9's mix decks, reorder, and move questions,
+v1.8's Android 11+ storage-access fix, v1.7's CSV append, question editing,
+resume, and undo, v1.6's automatic backup and restore, v1.5's card text
 auto-fit, v1.3's search and bulk question deletion, plus v1.2's JSON backup,
 per-collection CSV export, and typed-confirmation reset control. The app stays
 local-first and does not require an internet connection for normal use. See

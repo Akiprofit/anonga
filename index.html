@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#193d3a">
   <title>AnoNga?</title>
   <!-- Fonts are bundled locally via @fontsource so the app works fully offline. -->
   <link rel="stylesheet" href="/src/style.css">
@@ -19,9 +20,14 @@
             <h1 class="app-title">AnoNga?</h1>
             <p class="app-subtitle">The Collection</p>
           </div>
-          <button id="langToggleHome" class="lang-toggle" data-lang="en" aria-label="Toggle language">
-            EN / TL
-          </button>
+          <div class="header-actions">
+            <button id="langToggleHome" class="lang-toggle" data-lang="en" aria-label="Toggle language">
+              EN / TL
+            </button>
+            <button id="settingsBtn" class="header-icon-btn" type="button" aria-label="Settings">
+              <span class="icon-wrapper" data-icon="settings"></span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -546,6 +552,55 @@
         </div>
         <p class="modal-description">Choose the collection that should receive the selected questions.</p>
         <div id="moveQuestionsList" class="picker-list"></div>
+      </div>
+    </div>
+
+    <div id="settingsModal" class="modal hidden">
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+        <div class="modal-header">
+          <h2 id="settingsTitle">Settings</h2>
+          <button class="modal-close" aria-label="Close">&times;</button>
+        </div>
+
+        <section class="settings-section">
+          <h3 class="settings-heading">Appearance</h3>
+          <div id="appearanceGroup" class="settings-segmented" role="radiogroup" aria-label="Appearance">
+            <button class="settings-choice" type="button" data-appearance="light" role="radio" aria-checked="false">Light</button>
+            <button class="settings-choice" type="button" data-appearance="dark" role="radio" aria-checked="false">Dark</button>
+            <button class="settings-choice" type="button" data-appearance="system" role="radio" aria-checked="false">System</button>
+          </div>
+          <p class="settings-help">System follows your phone's light or dark setting.</p>
+        </section>
+
+        <section class="settings-section">
+          <h3 class="settings-heading">Card language</h3>
+          <div id="languageGroup" class="settings-segmented" role="radiogroup" aria-label="Card language">
+            <button class="settings-choice" type="button" data-language="en" role="radio" aria-checked="false">English</button>
+            <button class="settings-choice" type="button" data-language="tl" role="radio" aria-checked="false">Taglish</button>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <label class="settings-row" for="shuffleOnOpenToggle">
+            <span class="settings-row-text">
+              <span class="settings-row-title">Shuffle when a deck opens</span>
+              <span class="settings-row-help">Start every session in a random order.</span>
+            </span>
+            <input id="shuffleOnOpenToggle" class="settings-switch" type="checkbox" role="switch">
+          </label>
+        </section>
+
+        <section class="settings-section">
+          <label class="settings-row" for="resumePromptToggle">
+            <span class="settings-row-text">
+              <span class="settings-row-title">Resume where you stopped</span>
+              <span class="settings-row-help">Reopen a deck at the last card you saw.</span>
+            </span>
+            <input id="resumePromptToggle" class="settings-switch" type="checkbox" role="switch">
+          </label>
+        </section>
+
+        <p class="settings-version">AnoNga <span id="settingsVersion">1.10</span></p>
       </div>
     </div>
 

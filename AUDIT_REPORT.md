@@ -890,3 +890,71 @@ only. The release APK was installed fresh.
 Release APK: `AnoNga-1.9.apk`, versionCode 10, signed.
 SHA-256: `37F91990BAD84903A5880468F94EFB767AB00804E0E7B6265C033D4179A5E984`
 
+## 18. v1.10 settings and dark mode
+
+### Changes
+
+- **Settings screen.** A gear button in the home header opens the app's own
+  Settings modal. No native dialogs are used.
+- **Appearance.** Light, Dark, or System. The choice is stored under
+  `anonga_appearance` and applied as `data-appearance` on the document element,
+  so every screen, modal, toast, and picker restyles from one token set. System
+  follows `prefers-color-scheme` and updates live when the phone switches.
+- **Dark tokens.** Dark mode overrides the shared surface tokens (background,
+  card background, ink, borders, shadows) and the remaining hard-coded light
+  surfaces: header, collection tiles, theme options, question rows, pickers,
+  search clear, dividers, and muted text. The Android theme-color meta tag is
+  updated to match.
+- **Card language.** English or Taglish can be chosen in Settings. It uses the
+  existing `anonga_language` key, so the header toggle and the play-screen toggle
+  stay in sync, and the card re-renders if a session is open.
+- **Shuffle when a deck opens.** Stored under `anonga_shuffle_on_open`. When on,
+  `startDeckSession` shuffles the order even when the caller did not ask for it.
+  Resume still works because progress is matched by question id.
+- **Resume where you stopped.** Stored under `anonga_resume_on_open`, default on.
+  When off, a deck opens at the first card and saved progress is ignored.
+- Settings are device state, not user content, so they are not written to the
+  backup and are not restored from it.
+- **Version** `versionCode 11`, `versionName 1.10`.
+
+### Automated
+
+- `npm test`: 23/23 tests pass.
+- `npm run build`: production bundle builds cleanly; `npx cap sync android`
+  copies it into the Android project.
+- Temporary jsdom smoke test (since deleted) drove the real app module:
+  - The gear opened Settings; choosing **Dark** set
+    `documentElement.dataset.appearance = "dark"`, stored
+    `anonga_appearance=dark`, updated the theme-color meta tag, and marked the
+    choice active. Choosing **Light** reverted both.
+  - Choosing **Taglish** stored `anonga_language=tl` and changed the header
+    toggle to `TL / EN`.
+  - Both switches persisted `true` / `false` and the modal closed.
+  - With resume off, a deck with saved progress at card 3 opened at `1 / 5`;
+    with resume on it reopened at `3 / 5`.
+- Release APK signed with the existing `CN=AnoNga` certificate.
+
+### Emulator verified
+
+Pixel-class AVD `Medium_Phone_API_37.0`, Android 17 (SDK 37), built-in decks
+only.
+
+- The gear appeared in the header next to **EN / TL** and opened Settings.
+- **Dark** repainted the home screen, tab bar, search box, collection tiles,
+  deck cards, and the Settings modal; **Light** restored the warm palette.
+- **System** followed the emulator's light/dark setting.
+- Settings choices showed the active state and survived a force-stop/relaunch.
+- The card language choice and both switches survived a relaunch.
+- No fatal logcat errors.
+
+### Not verified
+
+- The physical phone was disconnected during this release, so the v1.10 upgrade
+  over real data (4 collections, 201 questions, `dark-cherry`) is still pending.
+  No storage was cleared or reset; all existing backups remain.
+- Dark mode contrast on every deck theme, because deck card themes keep their
+  own palettes by design.
+
+Release APK: `AnoNga-1.10.apk`, versionCode 11, signed.
+SHA-256: `8107475A6321A69B39BDF50CA3CBB9AA1A59DFD530EDB5E5E541C59175699526`
+
