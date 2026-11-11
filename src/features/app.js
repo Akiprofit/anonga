@@ -31,6 +31,8 @@ const iconSvgs = {
   'info': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
   'arrow-left': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>',
   'arrow-right': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>',
+  'chevron-up': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>',
+  'chevron-down': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
   'shuffle': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>',
   'palette': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16c3.3 0 6-2.7 6-6 0-4.9-4.5-8.6-10-8.6z"/></svg>',
   'sparkles': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z"/><path d="M5 3l.7 1.6L7.3 5.3 5.7 6 5 7.6 4.3 6 2.7 5.3 4.3 4.6z"/></svg>',
@@ -118,7 +120,7 @@ const LANGUAGE_KEY = 'anonga_language';
 const FAVORITES_KEY = 'anonga_favorites';
 const LEGACY_CUSTOM_QUESTIONS_KEY = 'anonga_custom_questions';
 const SESSION_PROGRESS_KEY = 'anonga_session_progress';
-const APP_VERSION = '1.8';
+const APP_VERSION = '1.9';
 const AUTO_BACKUP_PATH = 'AnoNga/anonga-autosave.json';
 const AUTO_RESTORE_MARKER = 'anonga_autorestore_checked';
 
@@ -276,6 +278,9 @@ function writeSessionProgressMap(map) {
 }
 
 function saveSessionProgress() {
+  // A mixed deck is a one-off view over other decks, so it must not create a
+  // resumable session of its own.
+  if (currentDeck && currentDeck.isMix) return;
   if (!currentDeck || !currentDeck.id || !currentDeckQuestions.length) return;
   const question = getCurrentQuestion();
   const map = readSessionProgressMap();
@@ -747,6 +752,14 @@ function setupEventListeners() {
   const bulkDeleteQuestionsBtn = document.getElementById('bulkDeleteQuestionsBtn');
   if (bulkDeleteQuestionsBtn) {
     bulkDeleteQuestionsBtn.addEventListener('click', deleteSelectedQuestions);
+  }
+  const bulkMoveQuestionsBtn = document.getElementById('bulkMoveQuestionsBtn');
+  if (bulkMoveQuestionsBtn) {
+    bulkMoveQuestionsBtn.addEventListener('click', openMoveQuestionsModal);
+  }
+  const mixDecksBtn = document.getElementById('mixDecksBtn');
+  if (mixDecksBtn) {
+    mixDecksBtn.addEventListener('click', openMixDecksModal);
   }
 
   // Bind Edit Details once. Previously it was assigned each time the info modal
@@ -2348,7 +2361,7 @@ function startDeckSession(deck, options = {}) {
       const orderIndex = sessionOrder.indexOf(sourceIndex);
       if (orderIndex >= 0) sessionPosition = orderIndex;
     }
-  } else if (!options.fresh && deck.id) {
+  } else if (!options.fresh && deck.id && !deck.isMix) {
     const saved = readSessionProgressMap()[deck.id];
     if (saved) {
       const byQuestionId = saved.questionId
@@ -2373,6 +2386,12 @@ function startDeckSession(deck, options = {}) {
   hideCompletion(true);
   showPlayScreen();
   applyDeckTheme(deck);
+
+  // A mixed deck has no collection record behind it, so Info would offer
+  // editing actions that cannot be saved.
+  const infoBtn = document.getElementById('infoBtn');
+  if (infoBtn) infoBtn.classList.toggle('hidden', Boolean(deck.isMix));
+
   renderCardContent();
   updateDeckProgress();
   updateStack();
@@ -3102,7 +3121,7 @@ function closeModals() {
   const addQuestionsModal = document.getElementById('addQuestionsModal');
   const addQuestionsWasOpen = Boolean(addQuestionsModal && !addQuestionsModal.classList.contains('hidden'));
 
-  ['favoritesModal', 'deckInfoModal', 'themeModal', 'createDeckModal', 'addQuestionsModal', 'resetDataModal'].forEach((id) => {
+  ['favoritesModal', 'deckInfoModal', 'themeModal', 'createDeckModal', 'addQuestionsModal', 'resetDataModal', 'mixDecksModal', 'moveQuestionsModal'].forEach((id) => {
     const modal = document.getElementById(id);
     if (modal) modal.classList.add('hidden');
   });
@@ -3496,6 +3515,7 @@ function updateQuestionsSelectionState() {
   const selectAll = document.getElementById('selectAllQuestions');
   const countEl = document.getElementById('questionsSelectedCount');
   const deleteBtn = document.getElementById('bulkDeleteQuestionsBtn');
+  const moveBtn = document.getElementById('bulkMoveQuestionsBtn');
   if (!preview) return;
 
   const boxes = Array.from(preview.querySelectorAll('.question-select-checkbox'));
@@ -3504,6 +3524,7 @@ function updateQuestionsSelectionState() {
   if (toolbar) toolbar.classList.toggle('hidden', boxes.length === 0);
   if (countEl) countEl.textContent = `${selected} selected`;
   if (deleteBtn) deleteBtn.disabled = selected === 0;
+  if (moveBtn) moveBtn.disabled = selected === 0;
   if (selectAll) {
     selectAll.checked = boxes.length > 0 && selected === boxes.length;
     selectAll.indeterminate = selected > 0 && selected < boxes.length;
@@ -3790,6 +3811,7 @@ function renderQuestionsPreview() {
     return;
   }
 
+  const lastIndex = currentDeck.questions.length - 1;
   const html = currentDeck.questions.map((q, idx) => `
     <div class="question-item">
       <input class="question-select-checkbox" type="checkbox" data-question-id="${escapeHtml(q.id)}" aria-label="Select question ${idx + 1}">
@@ -3797,6 +3819,10 @@ function renderQuestionsPreview() {
         <div class="question-index">${idx + 1}.</div>
         <div class="question-text">${escapeHtml(q.en)}</div>
         <div class="question-text-tl">${escapeHtml(q.tl)}</div>
+      </div>
+      <div class="question-order-btns">
+        <button class="question-order-btn" data-question-id="${escapeHtml(q.id)}" data-direction="up" type="button" aria-label="Move question ${idx + 1} up" ${idx === 0 ? 'disabled' : ''}><span class="icon-wrapper" data-icon="chevron-up"></span></button>
+        <button class="question-order-btn" data-question-id="${escapeHtml(q.id)}" data-direction="down" type="button" aria-label="Move question ${idx + 1} down" ${idx === lastIndex ? 'disabled' : ''}><span class="icon-wrapper" data-icon="chevron-down"></span></button>
       </div>
       <button class="question-edit-btn" data-question-id="${escapeHtml(q.id)}" type="button" aria-label="Edit question"><span class="icon-wrapper" data-icon="pencil"></span></button>
       <button class="question-remove-btn" data-question-id="${escapeHtml(q.id)}" type="button" aria-label="Remove question">&times;</button>
@@ -3811,6 +3837,11 @@ function renderQuestionsPreview() {
   });
   preview.querySelectorAll('.question-edit-btn').forEach((btn) => {
     btn.addEventListener('click', () => startEditingQuestion(btn.dataset.questionId));
+  });
+  preview.querySelectorAll('.question-order-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      moveQuestionByOffset(btn.dataset.questionId, btn.dataset.direction === 'up' ? -1 : 1);
+    });
   });
   preview.querySelectorAll('.question-remove-btn').forEach((btn) => {
     btn.addEventListener('click', () => window.removeQuestion(btn.dataset.questionId));
@@ -3835,6 +3866,271 @@ function openAddQuestionsModal() {
   renderQuestionsPreview();
 }
 
+
+// ---------------------------------------------------------------------------
+// MIX DECKS
+// ---------------------------------------------------------------------------
+
+function getMixableDecks() {
+  return allDecks.filter((deck) => deck
+    && deck.id !== 'handmade'
+    && !deck.isHandmade
+    && Array.isArray(deck.questions)
+    && deck.questions.length > 0);
+}
+
+function updateMixDecksState() {
+  const list = document.getElementById('mixDecksList');
+  const startBtn = document.getElementById('mixDecksStartBtn');
+  if (!list || !startBtn) return;
+  const selected = list.querySelectorAll('.mix-deck-checkbox:checked').length;
+  startBtn.disabled = selected < 2;
+  startBtn.textContent = selected < 2
+    ? 'Pick at least 2 decks'
+    : `Start mixed session (${selected})`;
+}
+
+function openMixDecksModal() {
+  const modal = document.getElementById('mixDecksModal');
+  const list = document.getElementById('mixDecksList');
+  if (!modal || !list) return;
+
+  const decks = getMixableDecks();
+  if (decks.length < 2) {
+    showAlertModal({
+      title: 'Not Enough Decks',
+      message: 'You need at least two collections with questions to mix.',
+      type: 'warning',
+    });
+    return;
+  }
+
+  list.innerHTML = decks.map((deck) => `
+    <label class="picker-option">
+      <input class="mix-deck-checkbox" type="checkbox" value="${escapeHtml(deck.id)}">
+      <span class="picker-option-text">${escapeHtml(deck.name)}</span>
+      <span class="picker-option-meta">${questionCountLabel(deck.questions.length)}</span>
+    </label>
+  `).join('');
+
+  const startBtn = document.getElementById('mixDecksStartBtn');
+  if (startBtn) {
+    startBtn.disabled = true;
+    startBtn.textContent = 'Pick at least 2 decks';
+    startBtn.onclick = startMixSession;
+  }
+
+  list.querySelectorAll('.mix-deck-checkbox').forEach((box) => {
+    box.addEventListener('change', updateMixDecksState);
+  });
+
+  modal.classList.remove('hidden');
+}
+
+function startMixSession() {
+  const list = document.getElementById('mixDecksList');
+  if (!list) return;
+  const ids = new Set(
+    Array.from(list.querySelectorAll('.mix-deck-checkbox:checked')).map((box) => box.value),
+  );
+  const chosen = getMixableDecks().filter((deck) => ids.has(deck.id));
+  if (chosen.length < 2) return;
+
+  const questions = [];
+  chosen.forEach((deck) => {
+    ensureQuestionIdsForDeck(deck);
+    deck.questions.forEach((question) => {
+      if (question) questions.push({ ...question });
+    });
+  });
+
+  if (questions.length === 0) {
+    showAlertModal({ title: 'No Questions', message: 'The chosen collections have no questions.', type: 'warning' });
+    return;
+  }
+
+  const names = chosen.map((deck) => deck.name);
+  let title = names.join(' + ');
+  if (title.length > 42) title = `${chosen.length} mixed collections`;
+
+  const mixedDeck = {
+    id: `mix_${Date.now()}`,
+    name: title,
+    description: `Questions from ${chosen.length} collections`,
+    collection: 'mixed',
+    color: DEFAULT_DECK_COLOR,
+    questions,
+    count: questions.length,
+    isMix: true,
+  };
+
+  const modal = document.getElementById('mixDecksModal');
+  if (modal) modal.classList.add('hidden');
+  startDeckSession(mixedDeck, { fresh: true, shuffle: true });
+  showToast(`Mixing ${chosen.length} collections · ${questions.length} cards.`, 'success');
+}
+
+window.openMixDecksModal = openMixDecksModal;
+
+// ---------------------------------------------------------------------------
+// REORDER AND MOVE QUESTIONS
+// ---------------------------------------------------------------------------
+
+function restoreQuestions(deck, snapshot) {
+  if (!deck || !Array.isArray(deck.questions) || !Array.isArray(snapshot)) return;
+  deck.questions.length = 0;
+  snapshot.forEach((question) => deck.questions.push(question));
+}
+
+function getSelectedQuestionIds() {
+  const preview = document.getElementById('deckQuestionsPreview');
+  if (!preview) return [];
+  return Array.from(preview.querySelectorAll('.question-select-checkbox:checked'))
+    .map((box) => box.dataset.questionId)
+    .filter(Boolean);
+}
+
+function moveQuestionByOffset(questionId, offset) {
+  if (!currentDeck || !Array.isArray(currentDeck.questions)) return;
+  const index = currentDeck.questions.findIndex((question) => question && question.id === questionId);
+  if (index < 0) return;
+  const target = index + offset;
+  if (target < 0 || target >= currentDeck.questions.length) return;
+
+  const snapshot = currentDeck.questions.slice();
+  const swap = currentDeck.questions[index];
+  currentDeck.questions[index] = currentDeck.questions[target];
+  currentDeck.questions[target] = swap;
+
+  if (!saveDeckQuestions(currentDeck)) {
+    restoreQuestions(currentDeck, snapshot);
+    notifySaveFailure();
+    return;
+  }
+
+  renderQuestionsPreview();
+  refreshCurrentDeckSession(currentDeck);
+}
+
+function openMoveQuestionsModal() {
+  if (!currentDeck || !Array.isArray(currentDeck.questions)) return;
+  const selectedIds = getSelectedQuestionIds();
+  if (selectedIds.length === 0) return;
+
+  const modal = document.getElementById('moveQuestionsModal');
+  const list = document.getElementById('moveQuestionsList');
+  if (!modal || !list) return;
+
+  const targets = allDecks.filter((deck) => deck
+    && deck.id !== currentDeck.id
+    && Array.isArray(deck.questions));
+
+  if (targets.length === 0) {
+    showAlertModal({
+      title: 'No Other Collections',
+      message: 'Create another collection before moving questions.',
+      type: 'warning',
+    });
+    return;
+  }
+
+  list.innerHTML = targets.map((deck) => `
+    <button class="picker-option" type="button" data-target-deck-id="${escapeHtml(deck.id)}">
+      <span class="picker-option-text">${escapeHtml(deck.name)}</span>
+      <span class="picker-option-meta">${questionCountLabel(deck.questions.length)}</span>
+    </button>
+  `).join('');
+
+  list.querySelectorAll('[data-target-deck-id]').forEach((btn) => {
+    btn.addEventListener('click', () => moveSelectedQuestions(btn.dataset.targetDeckId));
+  });
+
+  const titleEl = document.getElementById('moveQuestionsTitle');
+  if (titleEl) {
+    titleEl.textContent = `Move ${selectedIds.length} ${selectedIds.length === 1 ? 'question' : 'questions'}`;
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function moveSelectedQuestions(targetDeckId) {
+  if (!currentDeck || !Array.isArray(currentDeck.questions)) return;
+  const target = allDecks.find((deck) => deck && deck.id === targetDeckId);
+  if (!target || target.id === currentDeck.id) return;
+
+  const selectedIds = new Set(getSelectedQuestionIds());
+  if (selectedIds.size === 0) return;
+
+  const moving = currentDeck.questions.filter((question) => question && selectedIds.has(question.id));
+  if (moving.length === 0) return;
+
+  ensureQuestionIdsForDeck(target);
+
+  const sourceSnapshot = currentDeck.questions.slice();
+  const targetSnapshot = target.questions.slice();
+  const movedIds = new Set();
+  let skipped = 0;
+
+  moving.forEach((question) => {
+    // The same question may live in two decks, but never twice in one deck.
+    if (isDuplicateQuestion(question.en, question.tl, target)) {
+      skipped += 1;
+      return;
+    }
+    target.questions.push({
+      ...question,
+      id: `${target.id || 'deck'}_q${Date.now()}_${target.questions.length}`,
+    });
+    movedIds.add(question.id);
+  });
+
+  if (movedIds.size === 0) {
+    showAlertModal({
+      title: 'Already There',
+      message: `Every selected question already exists in "${target.name}".`,
+      type: 'warning',
+    });
+    return;
+  }
+
+  for (let i = currentDeck.questions.length - 1; i >= 0; i -= 1) {
+    const question = currentDeck.questions[i];
+    if (question && movedIds.has(question.id)) currentDeck.questions.splice(i, 1);
+  }
+
+  // Save the receiving deck first: if storage fails halfway, the question
+  // stays in both decks rather than disappearing from the source.
+  const targetOk = saveDeckQuestions(target);
+  const sourceOk = saveDeckQuestions(currentDeck);
+  if (!sourceOk || !targetOk) {
+    restoreQuestions(currentDeck, sourceSnapshot);
+    restoreQuestions(target, targetSnapshot);
+    saveDeckQuestions(target);
+    saveDeckQuestions(currentDeck);
+    notifySaveFailure();
+    return;
+  }
+
+  const modal = document.getElementById('moveQuestionsModal');
+  if (modal) modal.classList.add('hidden');
+
+  refreshDeckCounts();
+  renderCollectionsTab();
+  renderDecksList();
+  renderQuestionsPreview();
+  refreshCurrentDeckSession(currentDeck);
+
+  const infoCountEl = document.getElementById('infoDeckCount');
+  if (infoCountEl) infoCountEl.textContent = `${questionCountLabel(currentDeck.count || 0)} in this deck`;
+
+  const suffix = skipped > 0
+    ? ` ${skipped} duplicate${skipped === 1 ? '' : 's'} skipped.`
+    : '';
+  showToast(
+    `Moved ${movedIds.size} ${movedIds.size === 1 ? 'question' : 'questions'} to "${target.name}".${suffix}`,
+    'success',
+  );
+}
 
 // Play Screen Event Listeners
 function setupPlayScreenListeners() {

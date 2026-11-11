@@ -12,7 +12,7 @@
   <a href="https://github.com/Akiprofit/anonga/releases/latest">
     <img alt="Download the Android APK" src="https://img.shields.io/badge/Download-Android%20APK-163D3A?style=for-the-badge&logo=android&logoColor=white" />
   </a>
-  <img alt="Version 1.8" src="https://img.shields.io/badge/version-1.8-C9846F?style=for-the-badge" />
+  <img alt="Version 1.9" src="https://img.shields.io/badge/version-1.9-C9846F?style=for-the-badge" />
   <img alt="Offline first" src="https://img.shields.io/badge/offline-first-5A7A5C?style=for-the-badge" />
 </p>
 
@@ -37,7 +37,7 @@ The latest signed Android APK is on the
 
 ### Install on Android
 
-1. Download `AnoNga-1.8.apk` from the latest release.
+1. Download `AnoNga-1.9.apk` from the latest release.
 2. Open the downloaded APK.
 3. Allow **Install unknown apps** for the browser or file manager you used.
 4. Tap **Install**.
@@ -88,8 +88,11 @@ to open that collection at the matching card.
 
 - Create your own collection with a name, description, and category
 - Categories: **Solo**, **Together**, or **Friends**
+- Edit a collection's name, description, category, and color after creating it
 - Add questions manually
 - Edit any question's English and Taglish text in place
+- Reorder questions with the up and down buttons
+- Select one or more questions and move them to another collection
 - Select one or more questions and delete them together after a confirmation
 - Undo a deleted collection or question for a few seconds
 - Import questions from a CSV file
@@ -98,6 +101,13 @@ to open that collection at the matching card.
 - Custom confirmation modal before deleting a collection
 - Resume a collection at the card where you stopped
 - Collections and their questions persist after restarting the app
+
+### Mix decks
+
+Choose **Mix Decks** in the Collections tab, tick two or more collections,
+and play their questions as one shuffled session. A mixed session is not saved
+as progress, so your normal resume points stay untouched. Questions keep their
+own favorites.
 
 ### CSV import and export
 
@@ -280,15 +290,15 @@ android/app/build/outputs/apk/release/app-release.apk
 
 ## Status
 
-**v1.8** — Storage-access fix. On Android 11 and newer, AnoNga now asks for
-**All files access** so the automatic backup in `Documents/AnoNga` can be
-written and restored again; without it the app warns instead of failing
-silently. Automatic restore also refuses to overwrite data that this install
-already has. Builds on v1.7's CSV append, question editing, resume, and undo,
-v1.6's automatic backup and restore, v1.5's card text auto-fit, v1.3's search
-and bulk question deletion, plus v1.2's JSON backup, per-collection CSV export,
-and typed-confirmation reset control. The app stays local-first and does not
-require an internet connection for normal use. See
+**v1.9** — Collection controls. **Mix Decks** plays two or more collections as
+one shuffled session without touching resume points. Collection details can be
+edited after creation, questions can be reordered with up/down buttons, and
+selected questions can be moved to another collection with duplicate checks.
+Builds on v1.8's Android 11+ storage-access fix, v1.7's CSV append, question
+editing, resume, and undo, v1.6's automatic backup and restore, v1.5's card text
+auto-fit, v1.3's search and bulk question deletion, plus v1.2's JSON backup,
+per-collection CSV export, and typed-confirmation reset control. The app stays
+local-first and does not require an internet connection for normal use. See
 [`AUDIT_REPORT.md`](AUDIT_REPORT.md) for the confirmed issues, fixes, browser
 test results, and the remaining on-device checks.
 

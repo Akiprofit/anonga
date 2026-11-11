@@ -822,3 +822,71 @@ release signature; real data was kept.
 Release APK: `AnoNga-1.8.apk`, versionCode 9, signed.
 SHA-256: `E66DFE3697717AE19E7BAB708A6503C482737F33DE86C42EA838071348162E92`
 
+## 17. v1.9 collection controls: mix decks, reorder, move questions
+
+### Changes
+
+- **Mix Decks.** The Collections tab has a **Mix Decks** button. It lists every
+  deck with questions, requires at least two selections, and starts one session
+  from a synthetic `isMix` deck that copies the chosen questions. The session
+  starts shuffled, never writes session progress, and never resumes, so the
+  normal resume points of the real decks stay untouched. The play-screen
+  **Info** button is hidden for a mixed deck because there is no collection
+  record to edit.
+- **Reorder.** Every row in **Add Questions** now has up and down chevrons. The
+  swap is saved through `saveDeckQuestions`; a failed write restores the old
+  order and shows the save-failure modal.
+- **Move selected.** A **Move selected** button sits next to **Delete selected**.
+  It opens a picker of all other decks, copies the selected questions with new
+  ids, and removes them from the source. Exact duplicates (normalized English and
+  Taglish) already in the target are skipped and reported in the toast. The
+  target deck is written before the source, so a partial failure leaves the
+  question in both decks instead of losing it.
+- **Duplicate rule.** Duplicates are blocked only inside one deck; the same
+  question may exist in two decks.
+- **Version** `versionCode 10`, `versionName 1.9`.
+
+### Automated
+
+- `npm test`: 23/23 tests pass.
+- `npm run build`: production bundle builds cleanly; `npx cap sync android`
+  copies it into the Android project.
+- Temporary jsdom smoke test (since deleted) drove the real app module:
+  - Mixing two seeded decks produced a 5-card session, hid **Info**, and left
+    `anonga_session_progress` unset.
+  - A down-chevron click persisted the new question order to
+    `anonga_custom_decks`.
+  - Moving two selected questions left the source with 1 question and the target
+    with 4.
+- Release APK signed with the existing `CN=AnoNga` certificate.
+
+### Emulator verified
+
+Pixel-class AVD `Medium_Phone_API_37.0`, Android 17 (SDK 37), built-in decks
+only. The release APK was installed fresh.
+
+- Collections tab showed **Create New Collection** and **Mix Decks**.
+- **Mix Decks** listed the decks with counts; two selections enabled
+  **Start mixed session (2)**. The session title was
+  `Getting to Know + In a Relationship`, the counter `1 / 120`, and the play
+  screen had no **Info** button.
+- Deck info for a built-in deck still showed **Edit Details**.
+- **Add Questions** showed the up/down chevrons plus **Move selected** and
+  **Delete selected**. A down-chevron click reordered the list.
+- Moving one selected question to **In a Relationship** showed
+  `Moved 1 question to "In a Relationship".` and the source count dropped to 59.
+- After a force-stop and relaunch: **Getting to Know** still listed 59 questions
+  and **In a Relationship** 61, and the reordered question was still the first
+  card of **Getting to Know** (`1 / 59`). No fatal logcat errors.
+
+### Not verified
+
+- The physical phone was disconnected during this release, so the v1.9 upgrade
+  over real data (4 collections, 201 questions, `dark-cherry`) is still pending.
+  No storage was cleared or reset during testing; all existing backups remain.
+- Mix Decks with the user's own collections, and moving questions between them,
+  which the emulator has no data for.
+
+Release APK: `AnoNga-1.9.apk`, versionCode 10, signed.
+SHA-256: `37F91990BAD84903A5880468F94EFB767AB00804E0E7B6265C033D4179A5E984`
+

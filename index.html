@@ -108,6 +108,9 @@
             <button id="createDeckBtn" class="btn btn-primary btn-large">
               <span class="icon-wrapper" data-icon="plus"></span> Create New Collection
             </button>
+            <button id="mixDecksBtn" class="btn btn-secondary btn-large" type="button">
+              <span class="icon-wrapper" data-icon="shuffle"></span> Mix Decks
+            </button>
           </div>
 
           <!-- Data safety -->
@@ -512,11 +515,37 @@
             <span>Select all</span>
           </label>
           <span id="questionsSelectedCount" class="questions-selected-count">0 selected</span>
+          <button id="bulkMoveQuestionsBtn" class="btn btn-secondary bulk-delete-btn" type="button" disabled>Move selected</button>
           <button id="bulkDeleteQuestionsBtn" class="btn btn-danger bulk-delete-btn" type="button" disabled>Delete selected</button>
         </div>
         <div id="deckQuestionsPreview" class="questions-preview">
           <!-- Questions will be listed here -->
         </div>
+      </div>
+    </div>
+
+    <div id="mixDecksModal" class="modal hidden">
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="mixDecksTitle">
+        <div class="modal-header">
+          <h2 id="mixDecksTitle">Mix Decks</h2>
+          <button class="modal-close" aria-label="Close">&times;</button>
+        </div>
+        <p class="modal-description">Pick two or more collections. Their questions play as one shuffled session.</p>
+        <div id="mixDecksList" class="picker-list"></div>
+        <div class="picker-actions">
+          <button id="mixDecksStartBtn" class="btn btn-primary" type="button" disabled>Start mixed session</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="moveQuestionsModal" class="modal hidden">
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="moveQuestionsTitle">
+        <div class="modal-header">
+          <h2 id="moveQuestionsTitle">Move Questions</h2>
+          <button class="modal-close" aria-label="Close">&times;</button>
+        </div>
+        <p class="modal-description">Choose the collection that should receive the selected questions.</p>
+        <div id="moveQuestionsList" class="picker-list"></div>
       </div>
     </div>
 
