@@ -124,7 +124,7 @@ const SESSION_PROGRESS_KEY = 'anonga_session_progress';
 const APPEARANCE_KEY = 'anonga_appearance';
 const SHUFFLE_ON_OPEN_KEY = 'anonga_shuffle_on_open';
 const RESUME_ON_OPEN_KEY = 'anonga_resume_on_open';
-const APP_VERSION = '1.10';
+const APP_VERSION = '1.10.1';
 const AUTO_BACKUP_PATH = 'AnoNga/anonga-autosave.json';
 const AUTO_RESTORE_MARKER = 'anonga_autorestore_checked';
 

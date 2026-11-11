@@ -979,3 +979,43 @@ Samsung SM-A366B, Android 14 (target SDK 34), upgraded in place from v1.8
 Release APK: `AnoNga-1.10.apk`, versionCode 11, signed.
 SHA-256: `8107475A6321A69B39BDF50CA3CBB9AA1A59DFD530EDB5E5E541C59175699526`
 
+## 19. v1.10.1 layout fixes
+
+### Confirmed issues
+
+- **Restore Backup was clipped.** In the Collections tab, the Your Data row put
+  **Back Up Data** and **Restore Backup** in a two-column grid. `.btn` uses
+  `white-space: nowrap`, and grid items default to `min-width: auto`, so the
+  longer label forced the row wider than the screen. The right button ran past
+  the screen edge and its text was cut off.
+- **Create New Collection and Mix Decks touched.** `.collections-footer` stacked
+  the two buttons with no gap, so their rounded corners overlapped visually.
+
+### Fixes
+
+- `.data-actions .btn` is now a flex row with `min-width: 0`, a 13px label,
+  wrapping text and a 6px icon gap. Labels stay inside the button at any width.
+- `.data-reset-btn` also allows wrapping.
+- `.collections-footer` is a flex column with a 12px gap.
+- `.btn-large` gets `min-width: 0`, wrapping text and balanced line breaks.
+- No JavaScript, storage, or data changes. Existing data and settings are
+  untouched.
+
+### Verified
+
+- `npm test`: 23/23 tests pass.
+- `npm run build` and `npx cap sync android`: clean.
+- Samsung SM-A366B, in place over v1.10: both Your Data buttons fit inside the
+  screen, and the two collection buttons have a visible gap.
+- Settings still opened with **System** and **English**, and the automatic
+  backup was rewritten with `appVersion 1.10.1`, 4 collections, 201 questions,
+  and the `dark-cherry` theme.
+
+### Not verified
+
+- Light-mode screenshot of the fixed row, because the phone was in dark mode.
+  The rules are appearance-independent.
+
+Release APK: `AnoNga-1.10.1.apk`, versionCode 12, signed.
+SHA-256: `91C36921D71B91960598AFFF97583965D07CE48CA81F64089651EF629C2B86E9`
+

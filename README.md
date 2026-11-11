@@ -12,7 +12,7 @@
   <a href="https://github.com/Akiprofit/anonga/releases/latest">
     <img alt="Download the Android APK" src="https://img.shields.io/badge/Download-Android%20APK-163D3A?style=for-the-badge&logo=android&logoColor=white" />
   </a>
-  <img alt="Version 1.10" src="https://img.shields.io/badge/version-1.10-C9846F?style=for-the-badge" />
+  <img alt="Version 1.10.1" src="https://img.shields.io/badge/version-1.10.1-C9846F?style=for-the-badge" />
   <img alt="Offline first" src="https://img.shields.io/badge/offline-first-5A7A5C?style=for-the-badge" />
 </p>
 
@@ -37,7 +37,7 @@ The latest signed Android APK is on the
 
 ### Install on Android
 
-1. Download `AnoNga-1.10.apk` from the latest release.
+1. Download `AnoNga-1.10.1.apk` from the latest release.
 2. Open the downloaded APK.
 3. Allow **Install unknown apps** for the browser or file manager you used.
 4. Tap **Install**.
@@ -301,6 +301,11 @@ android/app/build/outputs/apk/release/app-release.apk
 ---
 
 ## Status
+
+**v1.10.1** — Layout fixes. The **Restore Backup** button in the Your Data
+section no longer overflows the screen edge on narrow phones; backup and restore
+labels wrap inside their buttons. **Create New Collection** and **Mix Decks**
+now have a clear gap instead of touching.
 
 **v1.10** — Settings and dark mode. A gear in the header opens Settings with
 **Light / Dark / System** appearance, default card language, shuffle-on-open,

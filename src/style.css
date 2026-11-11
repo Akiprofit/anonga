@@ -2913,16 +2913,30 @@ body {
 
 /* Collections Footer */
 .collections-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   padding: var(--spacing-lg) var(--spacing-md);
   flex-shrink: 0;
 }
 
 .btn-large {
   width: 100%;
+  min-width: 0;
   padding: var(--spacing-md) var(--spacing-lg);
   font-size: 16px;
   font-weight: var(--font-weight-semibold);
   font-family: var(--font-ui);
+  white-space: normal;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.collections-footer .btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 /* Creation Steps */
@@ -3360,17 +3374,29 @@ body {
 }
 
 .data-actions .btn {
-  width: 100%;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  font-size: 14px;
-  padding: var(--spacing-sm) var(--spacing-md);
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  font-size: 13px;
+  padding: var(--spacing-sm);
+  white-space: normal;
+  line-height: 1.25;
+  text-align: center;
+  text-wrap: balance;
 }
 
 .data-reset-btn {
   width: 100%;
+  min-width: 0;
   margin-top: var(--spacing-md);
   font-size: 14px;
   padding: var(--spacing-sm) var(--spacing-md);
+  white-space: normal;
+  line-height: 1.25;
+  text-wrap: balance;
 }
 
 .reset-warning {
