@@ -947,13 +947,34 @@ only.
 - The card language choice and both switches survived a relaunch.
 - No fatal logcat errors.
 
+### Physical phone verified
+
+Samsung SM-A366B, Android 14 (target SDK 34), upgraded in place from v1.8
+(versionCode 9) to v1.10 (versionCode 11) with `adb install -r`.
+
+- The install kept the app data and the all-files access grant
+  (`appops get ... MANAGE_EXTERNAL_STORAGE` = allow), so no access prompt
+  appeared and the automatic backup kept running.
+- Home, tab bar, search box, collection tiles, Collections screen, and the
+  Settings modal all rendered in dark mode; the phone was in dark mode and
+  **System** was the active appearance.
+- All 4 custom collections were present with 201 questions total:
+  `Device Test` 1, `deep question` 50, `healty but deep rs` 50,
+  `Para sarili` 100.
+- The `deep question` deck kept its **Dark Cherry** theme badge and the play
+  screen used the dark-cherry palette. It resumed at `5 / 50`, so saved progress
+  survived the upgrade.
+- Settings showed `AnoNga 1.10`, English card language, shuffle off, resume on.
+- The automatic backup was rewritten after launch with `appVersion 1.10` and the
+  same 4 collections / 201 questions / `dark-cherry` theme.
+- No `FATAL EXCEPTION` or ANR in logcat.
+
 ### Not verified
 
-- The physical phone was disconnected during this release, so the v1.10 upgrade
-  over real data (4 collections, 201 questions, `dark-cherry`) is still pending.
-  No storage was cleared or reset; all existing backups remain.
 - Dark mode contrast on every deck theme, because deck card themes keep their
   own palettes by design.
+- The v1.9 features on the phone, because the phone skipped v1.9 and upgraded
+  from v1.8 straight to v1.10.
 
 Release APK: `AnoNga-1.10.apk`, versionCode 11, signed.
 SHA-256: `8107475A6321A69B39BDF50CA3CBB9AA1A59DFD530EDB5E5E541C59175699526`
